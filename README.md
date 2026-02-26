@@ -1,8 +1,12 @@
 # Cortex Brain
 
-Portable, encrypted memory with an OpenAI-compatible local proxy.
+Portable, encrypted memory with a local chat-completions proxy.
 
 Use one stable local endpoint for your AI clients while switching providers and models without changing your app integration.
+
+Cortex currently supports the OpenAI-compatible `POST /v1/chat/completions` shape.
+That is the most common compatibility format used by many AI tools.
+It is not a full clone of every OpenAI endpoint.
 
 ## What Is Cortex Brain? (In Plain English)
 
@@ -15,6 +19,20 @@ You can think of it like this:
 - Cortex reads/writes encrypted brain memory
 - Cortex executes memory logic deterministically through RMVM
 - Cortex returns normal chat output plus verification fields
+
+## Why Cortex Is Different
+
+- It is model-provider independent.
+Your memory is in the brain, not inside one model account.
+
+- It is deterministic and auditable.
+Memory execution produces proof roots (`semantic_root`, `trace_root`) so you can verify what happened.
+
+- It keeps app integration stable.
+Your client keeps one Base URL and API key while you switch provider/model behind Cortex.
+
+- It has explicit forget semantics.
+Forget is deterministic suppression policy, not silent hidden deletion.
 
 ## How It Works Under The Hood
 
@@ -33,19 +51,30 @@ You can think of it like this:
 - Brains are export/import portable across machines.
 - Forget uses deterministic suppression rules instead of silent deletion.
 
-## Sample Example
+## Sample Example (What Actually Happens)
 
 Write memory:
 ```text
 "Remember that I prefer tea."
 ```
 
+When this request reaches Cortex:
+- Cortex appends the event to RMVM input state.
+- RMVM creates/updates memory handles linked to your subject.
+- The brain now has durable memory for this preference.
+
 Later query:
 ```text
 "What drink do I prefer?"
 ```
 
-Typical outcome:
+When this query reaches Cortex:
+- Cortex gets the memory manifest for available handles/selectors.
+- Cortex builds or receives a plan (`openai`, `byo`, or `fallback`) and validates it.
+- RMVM executes the plan deterministically and returns verified assertions.
+- Cortex returns a normal assistant response in chat-completions format.
+
+Typical outcome in the response:
 - Assistant returns a normal answer (for example: "You prefer tea.")
 - Response also includes `cortex.status`, `cortex.semantic_root`, and `cortex.trace_root`
 
