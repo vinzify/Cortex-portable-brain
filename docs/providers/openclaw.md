@@ -1,5 +1,14 @@
 # OpenClaw Integration Recipe
 
+If you already ran `cortex setup`, the fastest path is:
+
+```bash
+cortex provider use openai
+cortex up
+```
+
+Your OpenClaw Base URL and API key do not change when you later run `cortex provider use claude|gemini|ollama`.
+
 ## Prerequisites
 - `cortex` binary installed
 - OpenClaw installed

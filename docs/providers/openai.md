@@ -1,10 +1,27 @@
 # OpenAI Planner Recipe
 
-## Prerequisites
-- `cortex` binary installed
-- Valid OpenAI API key
+If you already ran `cortex setup`, switch to OpenAI with one command:
 
-## Environment
+```bash
+cortex provider use openai
+```
+
+Optional model change:
+
+```bash
+cortex provider set-model gpt-4o-mini
+```
+
+Your client Base URL and API key do not change.
+
+## First-Time Setup (if needed)
+
+```bash
+cortex setup --non-interactive --provider openai --brain personal --api-key ctx_demo_key
+cortex up
+```
+
+## Optional Environment Overrides
 ```bash
 export CORTEX_PLANNER_MODE=openai
 export CORTEX_PLANNER_BASE_URL=https://api.openai.com/v1
@@ -14,12 +31,6 @@ export OPENAI_BASE_URL=http://127.0.0.1:8080/v1
 ```
 
 ## Smoke Test
-```bash
-cortex setup --non-interactive --provider openai --brain personal --api-key ctx_demo_key
-cortex up
-```
-
-In another shell:
 ```bash
 curl -sS http://127.0.0.1:8080/v1/chat/completions \
   -H "Authorization: Bearer ctx_demo_key" \

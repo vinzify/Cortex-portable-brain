@@ -4,7 +4,7 @@ Portable, encrypted memory with an OpenAI-compatible local proxy.
 
 Use one stable local endpoint for your AI clients while switching providers and models without changing your app integration.
 
-## Quick Start (Beginner Path)
+## Quick Start (3 Steps)
 
 ### 1) Install (No Rust Required)
 
@@ -23,9 +23,15 @@ Docker:
 docker run --rm -p 8080:8080 ghcr.io/vinzify/cortex-portable-brain:latest
 ```
 
-The installer runs `cortex setup` automatically in interactive terminals.
+### 2) Run guided setup
 
-### 2) Start everything
+```bash
+cortex setup
+```
+
+This creates or selects your brain, stores local config, and maps your proxy API key.
+
+### 3) Start everything
 
 ```bash
 cortex up
@@ -35,14 +41,28 @@ cortex up
 - RMVM gRPC runtime (managed sidecar by default)
 - Cortex proxy on `http://127.0.0.1:8080`
 
-### 3) Point your existing OpenAI-compatible client to Cortex
+You will see a copy/paste block like:
+```bash
+Copy/paste client settings:
+Base URL: http://127.0.0.1:8080/v1
+API Key: ctx_...
+Provider: OpenAI (gpt-4o-mini)
+Brain: personal
+```
+
+Use it anytime:
+```bash
+cortex status --copy
+```
+
+### Point your existing OpenAI-compatible client to Cortex
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8080/v1
 export OPENAI_API_KEY=<your-cortex-proxy-api-key>
 ```
 
-### 60-Second Smoke Test
+## Does It Work?
 
 ```bash
 curl -sS -i http://127.0.0.1:8080/v1/chat/completions \
@@ -51,29 +71,26 @@ curl -sS -i http://127.0.0.1:8080/v1/chat/completions \
   -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"remember I prefer tea\"}]}"
 ```
 
-Expected shape:
-```bash
-HTTP/1.1 200 OK
-...
-{"id":"chatcmpl-...","object":"chat.completion","choices":[...],"cortex":{"status":"OK","semantic_root":"...","trace_root":"..."}}
-```
+Expected result: `HTTP/1.1 200 OK` and a `chat.completion` JSON response with a `cortex` block.
 
 If you get `STALL` or `REJECTED`, run:
 ```bash
 cortex doctor
 ```
 
-## One-Command Provider Switching
+## Switch AI Provider In 10 Seconds
 
-Switch planner provider:
+Switch provider:
 ```bash
 cortex provider use claude
 ```
 
-Set model:
+Optional model change:
 ```bash
 cortex provider set-model claude-opus-4-6
 ```
+
+Your AI app settings do not change. Only the planner behind Cortex changes.
 
 Supported profiles:
 - `openai`
@@ -81,9 +98,6 @@ Supported profiles:
 - `gemini`
 - `ollama`
 - `byo`
-
-Client-facing URL stays stable:
-- `OPENAI_BASE_URL=http://127.0.0.1:8080/v1`
 
 ## Brain Management
 
@@ -132,22 +146,48 @@ Logs:
 cortex logs --service all --tail 200 --follow
 ```
 
-## Guided Setup
+## Troubleshooting
 
-Interactive:
 ```bash
-cortex setup
+cortex doctor
 ```
 
-Non-interactive:
+If needed:
 ```bash
-cortex setup --non-interactive --provider openai --brain personal --api-key ctx_demo_key
+cortex logs --service all --tail 200 --follow
 ```
 
-External RMVM endpoint (optional):
-```bash
-cortex setup --non-interactive --rmvm-endpoint grpc://127.0.0.1:50051
-```
+More fixes:
+- `docs/common_problems.md`
+
+## Docs
+
+Getting started:
+- `docs/getting_started.md`
+- `docs/common_problems.md`
+
+Provider guides:
+- OpenAI planner: `docs/providers/openai.md`
+- Claude planner: `docs/providers/claude.md`
+- Gemini planner: `docs/providers/gemini.md`
+- OpenClaw integration: `docs/providers/openclaw.md`
+
+Operations and security:
+- `docs/operations/server_config.md`
+- `docs/operations/baseline_update_policy.md`
+- `docs/security/controls.md`
+- `docs/security_model.md`
+- `docs/proxy_mode.md`
+- `docs/portable_brain_format.md`
+- `docs/forget_ux.md`
+- `docs/use_cases.md`
+
+Compatibility:
+- `core_version.lock`
+- `docs/compatibility_matrix.md`
+
+Migration:
+- `docs/migration_from_cortex_rmvm.md`
 
 ## What Cortex Brain Includes
 
@@ -157,38 +197,9 @@ cortex setup --non-interactive --rmvm-endpoint grpc://127.0.0.1:50051
 - Planner modes: `openai`, `byo`, `fallback`
 - Managed RMVM sidecar runtime by default
 
-## Three Common Use Cases
+## Advanced Reference
 
-### 1) Personal assistant with evolving preferences
-Keep durable preferences across providers and apply deterministic suppression when needed.
-
-### 2) Coding agent safety
-Control read/write classes and sink permissions per attached agent.
-
-### 3) Enterprise auditability
-Use `semantic_root` and `trace_root` for traceable memory-backed responses.
-
-## Provider Docs
-
-- OpenAI planner: `docs/providers/openai.md`
-- Claude planner: `docs/providers/claude.md`
-- Gemini planner: `docs/providers/gemini.md`
-- OpenClaw integration: `docs/providers/openclaw.md`
-
-## Diagnostics
-
-```bash
-cortex doctor
-```
-
-Checks include:
-- proxy reachability
-- planner reachability
-- brain unlock state
-- API key mapping
-- dry-run `appendEvent -> getManifest -> execute`
-
-## Full CLI Surface
+### Full CLI Surface
 
 ```bash
 cortex setup [--non-interactive] [--provider <name>] [--model <model>] [--brain <name>] [--api-key <key>] [--rmvm-endpoint <grpc-url>]
@@ -219,7 +230,7 @@ cortex doctor [--proxy-base-url <url>] [--endpoint <grpc-url>] [--brain <id>] [-
 cortex open [--print-only] [--url]
 ```
 
-## Environment Variables
+### Environment Variables
 
 - `CORTEX_BRAIN`
 - `CORTEX_ENDPOINT`
@@ -235,32 +246,10 @@ cortex open [--print-only] [--url]
 - `RMVM_MAX_ENCODING_BYTES`
 - `RMVM_REQUEST_TIMEOUT_SECS`
 
-## Developer Build
+### Developer Build
 
 ```bash
 cargo test --locked
 cargo run -p cortex-app -- setup --non-interactive --provider ollama --brain demo --api-key ctx_demo_key
 cargo run -p cortex-app -- up
 ```
-
-## Compatibility
-
-Pinned RMVM core contract:
-- `core_version.lock`
-- `docs/compatibility_matrix.md`
-
-## Operations and Security
-
-- `docs/operations/server_config.md`
-- `docs/operations/baseline_update_policy.md`
-- `docs/security/controls.md`
-- `docs/security_model.md`
-- `docs/proxy_mode.md`
-- `docs/portable_brain_format.md`
-- `docs/forget_ux.md`
-- `docs/use_cases.md`
-
-## Migration
-
-If you used `portable-brain-proxy` inside `cortex-rmvm`:
-- `docs/migration_from_cortex_rmvm.md`
