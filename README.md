@@ -1,42 +1,108 @@
-# Cortex Brain
+﻿# Cortex Brain
 ![Cortex Brain banner](docs/assets/cortex-brain-banner.png)
 
-Portable, encrypted memory with a local chat-completions proxy.
+Portable, encrypted memory for AI apps, with one stable local endpoint.
 
-Use one stable local endpoint for your AI clients while switching providers and models without changing your app integration.
+Cortex Brain lets you keep using your normal chat app while memory stays portable, verifiable, and provider-agnostic.
+
+### In 30 seconds
+- Run `cortex setup` once.
+- Run `cortex up`.
+- Paste one Base URL and API key into your AI app.
+- Keep chatting normally.
+
+## Table of Contents
+- [What Cortex Brain Is](#what-cortex-brain-is)
+- [Compatibility](#compatibility)
+- [Why Cortex Is Different](#why-cortex-is-different)
+- [Architecture](#architecture)
+- [Quick Start (3 Steps)](#quick-start-3-steps)
+- [Daily Use (No CLI Needed)](#daily-use-no-cli-needed)
+- [Switch Provider in 10 Seconds](#switch-provider-in-10-seconds)
+- [How to Verify It Works](#how-to-verify-it-works)
+- [Complete Use Case](#complete-use-case)
+- [Brain Management](#brain-management)
+- [Runtime Controls](#runtime-controls)
+- [Troubleshooting](#troubleshooting)
+- [Docs](#docs)
+- [What Cortex Brain Includes](#what-cortex-brain-includes)
+- [Advanced Reference](#advanced-reference)
+
+## What Cortex Brain Is
+Cortex Brain is a local proxy + encrypted brain store.
+
+- Your AI app talks to Cortex using OpenAI-compatible chat completions.
+- Cortex plans and executes memory operations deterministically via RMVM.
+- Cortex returns normal chat output plus a `cortex` block with verification roots.
+
+Short definitions:
+- RMVM: the deterministic memory execution engine behind Cortex.
+- `semantic_root`: a stable proof hash for the semantic outcome of execution.
+- `trace_root`: a proof hash for the execution trace.
 
 ## Compatibility
-
 Cortex Brain works with:
 - OpenAI
 - Claude (via OpenAI-compatible endpoint)
 - Gemini (via OpenAI-compatible endpoint)
 - Ollama (local)
-- OpenClaw (point OpenClaw Base URL to Cortex)
+- OpenClaw (by pointing its Base URL to Cortex)
 - Any tool that supports OpenAI-compatible chat completions
 
 Scope:
 - Supported: OpenAI-compatible `POST /v1/chat/completions`
 - Not supported: full OpenAI API surface
 
-## Why Cortex Is Different From Typical Memory
+## Why Cortex Is Different
+Typical memory systems are retrieval-only:
+- Store text chunks
+- Retrieve top-k similar chunks
+- Ask model to infer from retrieved text
+- Results can vary and be hard to audit
 
-Most memory today:
-- stores chat chunks in a vector database
-- retrieves top-k similar text
-- asks the model to answer from retrieved text
-- can be inconsistent, hard to debug, and easier to poison
-
-Cortex memory:
-- executes a validated plan against a manifest
-- uses deterministic RMVM execution instead of free-form recall
-- returns verified output derived from execution
-- includes proof roots (`semantic_root`, `trace_root`) for auditability
+Cortex is execution-based:
+- A constrained plan is produced
+- RMVM executes that plan deterministically
+- Output is returned from verified execution
+- Proof roots are included for auditing
 
 Concrete guarantees:
-- no memory-based claim without evidence (verified assertions only)
-- deterministic behavior (same inputs produce the same `semantic_root`)
-- safe forget semantics (deterministic suppression, not silent deletion)
+- No memory claim without evidence (verified assertions only)
+- Deterministic behavior (`semantic_root` stability for same inputs)
+- Safe forget behavior (deterministic suppression, not silent deletion)
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[AI App / Client] -->|POST /v1/chat/completions| B[Cortex Proxy]
+    B --> C[RMVM Engine]
+    C <--> D[Encrypted Brain Store]
+    B --> E[Model Provider Planner]
+    E --> B
+    C --> B
+    B -->|chat.completion + cortex proof block| A
+```
+
+## Request Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant U as AI App
+    participant P as Cortex Proxy
+    participant M as Model Provider (Planner)
+    participant R as RMVM
+    participant B as Encrypted Brain
+
+    U->>P: chat/completions request
+    P->>M: generate constrained plan
+    M-->>P: RMVMPlan
+    P->>R: execute plan
+    R->>B: read/write memory state
+    B-->>R: memory objects/rules
+    R-->>P: verified execution + roots
+    P-->>U: chat.completion + cortex block
+```
 
 ## Quick Start (3 Steps)
 
@@ -63,7 +129,7 @@ docker run --rm -p 8080:8080 ghcr.io/vinzify/cortex-portable-brain:latest
 cortex setup
 ```
 
-This creates or selects your brain, stores local config, and maps your proxy API key.
+This creates/selects your brain and maps your proxy API key.
 
 ### 3) Start everything
 
@@ -75,7 +141,7 @@ cortex up
 - RMVM gRPC runtime (managed sidecar by default)
 - Cortex proxy on `http://127.0.0.1:8080`
 
-You will see a copy/paste block like:
+You will see a copy/paste block:
 ```bash
 Copy/paste client settings:
 Base URL: http://127.0.0.1:8080/v1
@@ -84,76 +150,27 @@ Provider: OpenAI (gpt-4o-mini)
 Brain: personal
 ```
 
-Use it anytime:
+Show it anytime:
 ```bash
 cortex status --copy
 ```
 
-### Point your existing OpenAI-compatible client to Cortex
+### Where do I paste Base URL and API key?
+In your AI app’s model/provider settings:
+- Base URL: `http://127.0.0.1:8080/v1`
+- API key: your Cortex key (`ctx_...`)
 
-```bash
-export OPENAI_BASE_URL=http://127.0.0.1:8080/v1
-export OPENAI_API_KEY=<your-cortex-proxy-api-key>
-```
+Then keep using your app normally.
 
 ## Daily Use (No CLI Needed)
+After setup:
+- Chat as usual in your existing app.
+- Cortex handles memory write/recall behind the proxy.
+- Use CLI only for admin actions: switch provider, export/import, forget, doctor.
 
-After setup, normal users just chat in their usual AI app.
+## Switch Provider in 10 Seconds
 
-- Keep using your existing chat UI.
-- Do not change prompts or workflow.
-- Cortex handles memory write/recall through the proxy.
-- Use CLI commands only for admin tasks: switch provider, export/import, forget, doctor.
-
-## Does It Work?
-
-```bash
-curl -sS -i http://127.0.0.1:8080/v1/chat/completions \
-  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
-  -H "Content-Type: application/json" \
-  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"remember I prefer tea\"}]}"
-```
-
-Expected result: `HTTP/1.1 200 OK` and a `chat.completion` JSON response with a `cortex` block.
-
-If you get `STALL` or `REJECTED`, run:
-```bash
-cortex doctor
-```
-
-## Complete Use Case: Remember, Recall, Switch, Forget
-
-This is an API-level verification flow. In normal usage, you can do the same actions by chatting in your AI app.
-
-### 1) Write a preference to memory
-
-```bash
-curl -sS http://127.0.0.1:8080/v1/chat/completions \
-  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
-  -H "Content-Type: application/json" \
-  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"My preferred drink is tea. Remember this.\"}]}"
-```
-
-What happens:
-- the planner creates a constrained RMVM plan
-- RMVM executes it deterministically
-- the proxy returns a normal chat-completion response plus a `cortex` block with proof roots
-
-### 2) Ask for the stored preference
-
-```bash
-curl -sS http://127.0.0.1:8080/v1/chat/completions \
-  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
-  -H "Content-Type: application/json" \
-  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"What drink do I prefer?\"}]}"
-```
-
-Expected result:
-- assistant answer references the remembered preference
-- response includes `cortex.semantic_root` and `cortex.trace_root`
-
-### 3) Switch provider without changing your app endpoint
-
+Switch from OpenAI to Claude:
 ```bash
 cortex provider use claude
 ```
@@ -163,29 +180,38 @@ Optional model change:
 cortex provider set-model claude-opus-4-6
 ```
 
-Ask again with the same `curl` command and same local URL (`http://127.0.0.1:8080/v1/chat/completions`).
-Your client Base URL and API key stay the same.
+Your app settings stay the same:
+- Same Base URL
+- Same API key
 
-### 4) Suppress the preference with forget
+Supported profiles:
+- `openai`
+- `claude`
+- `gemini`
+- `ollama`
+- `byo`
 
+## How to Verify It Works
+
+### Smoke test
 ```bash
-cortex brain forget --subject user:local --predicate prefers_beverage --reason "suppress preference"
-```
-
-Ask again:
-```bash
-curl -sS http://127.0.0.1:8080/v1/chat/completions \
+curl -sS -i http://127.0.0.1:8080/v1/chat/completions \
   -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
   -H "Content-Type: application/json" \
-  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"What drink do I prefer?\"}]}"
+  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"remember I prefer tea\"}]}"
 ```
 
-Expected result:
-- the previous preference is suppressed by deterministic forget rules
-- if needed, run `cortex doctor` and `cortex logs --service all --tail 200 --follow`
+Expected:
+- `HTTP/1.1 200 OK`
+- `chat.completion` response
+- `cortex` block present
 
-## Trust Test (10 Seconds)
+If `STALL` or `REJECTED`:
+```bash
+cortex doctor
+```
 
+### Trust test (determinism check)
 Run the same request twice:
 
 ```bash
@@ -200,30 +226,62 @@ curl -sS http://127.0.0.1:8080/v1/chat/completions \
   -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"remember I prefer tea\"}]}" > resp2.json
 ```
 
-Check `cortex.semantic_root` in both responses.
-For the same inputs, it should match.
+Check `cortex.semantic_root` in both.  
+For same inputs, it should match.
 
-## Switch AI Provider In 10 Seconds
+## Complete Use Case
 
-Switch from OpenAI to Claude:
+This is an API-level verification flow.  
+In normal use, the same behavior happens through your chat UI.
+
+### 1) Write memory
+```bash
+curl -sS http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"My preferred drink is tea. Remember this.\"}]}"
+```
+
+### 2) Query memory
+```bash
+curl -sS http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"What drink do I prefer?\"}]}"
+```
+
+Expected:
+- Answer references remembered preference
+- Response includes `cortex.semantic_root` and `cortex.trace_root`
+
+### 3) Switch provider, keep same endpoint
 ```bash
 cortex provider use claude
 ```
 
-Optional model change:
+Optional:
 ```bash
 cortex provider set-model claude-opus-4-6
 ```
 
-Your AI app settings do not change.
-Base URL and API key stay the same.
+Repeat the same query call.  
+Base URL and API key do not change.
 
-Supported profiles:
-- `openai`
-- `claude`
-- `gemini`
-- `ollama`
-- `byo`
+### 4) Forget (suppression)
+```bash
+cortex brain forget --subject user:local --predicate prefers_beverage --reason "suppress preference"
+```
+
+Query again:
+```bash
+curl -sS http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"What drink do I prefer?\"}]}"
+```
+
+Expected:
+- Previous preference is suppressed by deterministic forget rules
 
 ## Brain Management
 
@@ -379,3 +437,4 @@ cargo test --locked
 cargo run -p cortex-app -- setup --non-interactive --provider ollama --brain demo --api-key ctx_demo_key
 cargo run -p cortex-app -- up
 ```
+
