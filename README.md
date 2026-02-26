@@ -4,38 +4,52 @@ Portable, encrypted memory with an OpenAI-compatible local proxy.
 
 Use one stable local endpoint for your AI clients while switching providers and models without changing your app integration.
 
-## What Is Cortex Brain? (Simple)
+## What Is Cortex Brain? (In Plain English)
 
-Cortex Brain is your memory layer for AI apps.
-Instead of every model starting from zero, Cortex keeps what matters in an encrypted local brain.
-Your app keeps using one OpenAI-compatible endpoint, and Cortex handles memory + provider switching behind it.
+Cortex Brain is a memory layer that sits between your AI app and your model provider.
+It gives your assistant durable memory without tying you to one model vendor.
+Your app always calls one local OpenAI-compatible endpoint, and Cortex handles memory, execution, and provider routing.
 
-In simple terms:
-- your AI app sends requests to Cortex
-- Cortex checks your brain memory
-- Cortex runs deterministic memory execution (RMVM)
-- Cortex returns an OpenAI-compatible response, with verification metadata
+You can think of it like this:
+- your app talks to `http://127.0.0.1:8080/v1`
+- Cortex reads/writes encrypted brain memory
+- Cortex executes memory logic deterministically through RMVM
+- Cortex returns normal chat output plus verification fields
 
-## Example (How It Works)
+## How It Works Under The Hood
 
-You send:
+1. Your AI app sends a standard OpenAI-compatible request to Cortex.
+2. Cortex appends the user event and fetches a manifest of available memory handles/selectors.
+3. Cortex resolves a plan (`openai`, `byo`, or `fallback`) and validates it against the manifest.
+4. RMVM executes deterministically and returns assertions, status, and proof roots.
+5. Cortex returns an OpenAI-compatible response with a `cortex` metadata block.
+
+## Why This Works For Long-Term Memory
+
+- Memory is stored in an encrypted local brain, not in a short-lived model session.
+- The endpoint your app uses stays constant even when you switch providers.
+- Execution is deterministic, so behavior is stable and auditable.
+- Responses include proof roots (`semantic_root`, `trace_root`) for traceability.
+- Brains are export/import portable across machines.
+- Forget uses deterministic suppression rules instead of silent deletion.
+
+## Sample Example
+
+Write memory:
 ```text
 "Remember that I prefer tea."
 ```
 
-Later you ask:
+Later query:
 ```text
 "What drink do I prefer?"
 ```
 
-Cortex can return a normal assistant answer, and include a `cortex` block with proof fields like:
-- `status`
-- `semantic_root`
-- `trace_root`
+Typical outcome:
+- Assistant returns a normal answer (for example: "You prefer tea.")
+- Response also includes `cortex.status`, `cortex.semantic_root`, and `cortex.trace_root`
 
-So you get both:
-- normal chat output for your app
-- auditable memory evidence from Cortex
+So you get both human-friendly output and machine-verifiable memory evidence.
 
 ## Quick Start (3 Steps)
 
