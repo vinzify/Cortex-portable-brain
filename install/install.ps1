@@ -12,11 +12,13 @@ $rmvmAsset = "rmvm-grpc-server-$os-$arch.exe"
 
 if ($Version -eq "latest") {
   $api = "https://api.github.com/repos/$Repo/releases"
+  $latestUrl = "{0}/latest" -f $api
+  $listUrl = "{0}?per_page=20" -f $api
   try {
-    $release = Invoke-RestMethod -Uri "$api/latest"
+    $release = Invoke-RestMethod -Uri $latestUrl
   } catch {
     # `latest` endpoint excludes pre-releases; fall back to newest non-draft release.
-    $releases = Invoke-RestMethod -Uri "$api?per_page=20"
+    $releases = Invoke-RestMethod -Uri $listUrl
     $release = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
     if ($null -eq $release) {
       throw "No published releases found for $Repo."
