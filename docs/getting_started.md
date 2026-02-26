@@ -28,7 +28,13 @@ curl -fsSL https://raw.githubusercontent.com/vinzify/Cortex-portable-brain/main/
 
 Windows PowerShell:
 ```powershell
-irm https://raw.githubusercontent.com/vinzify/Cortex-portable-brain/main/install/install.ps1 | iex
+irm https://github.com/vinzify/Cortex-portable-brain/raw/main/install/install.ps1 | iex
+```
+
+If your network blocks raw script fetch:
+```powershell
+git clone https://github.com/vinzify/Cortex-portable-brain.git
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Cortex-portable-brain\install\install.ps1
 ```
 
 ## 2) Setup
