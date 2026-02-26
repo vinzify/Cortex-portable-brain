@@ -11,7 +11,17 @@ $cortexAsset = "cortex-app-$os-$arch.exe"
 $rmvmAsset = "rmvm-grpc-server-$os-$arch.exe"
 
 if ($Version -eq "latest") {
-  $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
+  $api = "https://api.github.com/repos/$Repo/releases"
+  try {
+    $release = Invoke-RestMethod -Uri "$api/latest"
+  } catch {
+    # `latest` endpoint excludes pre-releases; fall back to newest non-draft release.
+    $releases = Invoke-RestMethod -Uri "$api?per_page=20"
+    $release = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
+    if ($null -eq $release) {
+      throw "No published releases found for $Repo."
+    }
+  }
   $tag = $release.tag_name
 } else {
   $tag = $Version

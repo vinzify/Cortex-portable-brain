@@ -23,9 +23,18 @@ sidecar_asset="rmvm-grpc-server-${os}-${arch}"
 
 api="https://api.github.com/repos/${REPO}/releases"
 if [[ "$VERSION" == "latest" ]]; then
-  tag="$(curl -fsSL "$api/latest" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  # `latest` endpoint excludes pre-releases; fall back to releases list.
+  tag="$(curl -fsSL "$api/latest" 2>/dev/null | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1 || true)"
+  if [[ -z "$tag" ]]; then
+    tag="$(curl -fsSL "$api?per_page=20" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  fi
 else
   tag="$VERSION"
+fi
+
+if [[ -z "$tag" ]]; then
+  echo "No published releases found for ${REPO}."
+  exit 1
 fi
 
 mkdir -p "$INSTALL_DIR"
