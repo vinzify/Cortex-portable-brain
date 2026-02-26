@@ -112,6 +112,67 @@ If you get `STALL` or `REJECTED`, run:
 cortex doctor
 ```
 
+## Complete Use Case: Remember, Recall, Switch, Forget
+
+### 1) Write a preference to memory
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"My preferred drink is tea. Remember this.\"}]}"
+```
+
+What happens:
+- the planner creates a constrained RMVM plan
+- RMVM executes it deterministically
+- the proxy returns a normal chat-completion response plus a `cortex` block with proof roots
+
+### 2) Ask for the stored preference
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"What drink do I prefer?\"}]}"
+```
+
+Expected result:
+- assistant answer references the remembered preference
+- response includes `cortex.semantic_root` and `cortex.trace_root`
+
+### 3) Switch provider without changing your app endpoint
+
+```bash
+cortex provider use claude
+```
+
+Optional model change:
+```bash
+cortex provider set-model claude-opus-4-6
+```
+
+Ask again with the same `curl` command and same local URL (`http://127.0.0.1:8080/v1/chat/completions`).
+Your client Base URL and API key stay the same.
+
+### 4) Suppress the preference with forget
+
+```bash
+cortex brain forget --subject user:local --predicate prefers_beverage --reason "suppress preference"
+```
+
+Ask again:
+```bash
+curl -sS http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"What drink do I prefer?\"}]}"
+```
+
+Expected result:
+- the previous preference is suppressed by deterministic forget rules
+- if needed, run `cortex doctor` and `cortex logs --service all --tail 200 --follow`
+
 ## Trust Test (10 Seconds)
 
 Run the same request twice:
