@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+
+      - name: Check Core Lock
+        shell: pwsh
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/check_core_version_lock.ps1
+
+      - name: Check Core Proto Checksums
+        shell: pwsh
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/check_core_proto_checksums.ps1
+
+      - name: Check Dependency Manifest Hash
+        shell: pwsh
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/check_dependency_manifest_hash.ps1
+
+      - name: Run Tests
+        run: cargo test --locked
+
+  build-binaries:
+    name: Build cortex (${{ matrix.os }}-${{ matrix.arch }})
+    needs: [validate]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: x64
+          - runner: macos-latest
+            os: macos
+            arch: arm64
+          - runner: windows-latest
+            os: windows
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+
+      - name: Build Release Binary
+        run: cargo build --locked -p cortex-app --bin cortex --release
+
+      - name: Package Binary + Checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $binPath = if ("${{ matrix.os }}" -eq "windows") {
+            "target/release/cortex.exe"
+          } else {
+            "target/release/cortex"
+          }
+          $ext = if ("${{ matrix.os }}" -eq "windows") { ".exe" } else { "" }
+          $asset = "cortex-app-${{ matrix.os }}-${{ matrix.arch }}$ext"
+          Copy-Item $binPath "release/$asset"
+          $hash = (Get-FileHash "release/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path "release/$asset.sha256" -Value "$hash  $asset" -Encoding utf8NoBOM
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-assets-${{ matrix.os }}-${{ matrix.arch }}
+          path: release/*
+
+  attest:
+    name: Sign + SBOM
+    needs: [build-binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.9.1
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate SBOMs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          for f in cortex-app-*; do
+            if [[ "$f" == *.sha256 ]]; then
+              continue
+            fi
+            syft "file:${f}" -o spdx-json > "${f}.sbom.spdx.json"
+          done
+
+      - name: Sign Assets (keyless)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          for f in *; do
+            cosign sign-blob --yes "$f" --output-signature "${f}.sig" --output-certificate "${f}.pem"
+          done
+
+      - name: Upload Signed Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-assets-signed
+          path: release-assets/*
+
+  publish:
+    name: Publish GitHub Release
+    needs: [attest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: cortex-assets-signed
+          path: release-assets
+
+      - name: Publish Pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          body: |
+            OpenAI-compatible proxy mode + portable brain (encrypted)
+          files: release-assets/*

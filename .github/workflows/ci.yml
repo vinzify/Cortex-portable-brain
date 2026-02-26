@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+
+      - name: Check Core Lock
+        shell: pwsh
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/check_core_version_lock.ps1
+
+      - name: Check Core Proto Checksums
+        shell: pwsh
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/check_core_proto_checksums.ps1
+
+      - name: Check Dependency Manifest Hash
+        shell: pwsh
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/check_dependency_manifest_hash.ps1
+
+      - name: Run Tests
+        run: cargo test --locked

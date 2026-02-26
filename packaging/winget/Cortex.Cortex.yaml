@@ -1,0 +1,14 @@
+PackageIdentifier: Cortex.Cortex
+PackageVersion: 0.1.0-alpha.1
+PackageLocale: en-US
+Publisher: Cortex Labs
+PackageName: Cortex
+License: MIT
+ShortDescription: Portable Brain + OpenAI-compatible Cortex proxy
+Installers:
+  - Architecture: x64
+    InstallerType: exe
+    InstallerUrl: https://github.com/vinzify/Cortex-portable-brain/releases/download/v0.1.0-alpha.1/cortex-app-windows-x64.exe
+    InstallerSha256: REPLACE_WITH_RELEASE_SHA256
+ManifestType: singleton
+ManifestVersion: 1.6.0

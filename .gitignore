@@ -1,0 +1,6 @@
+target/
+dist/
+release/
+*.cbrain
+.env
+.DS_Store
