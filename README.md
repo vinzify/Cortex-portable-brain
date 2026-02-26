@@ -4,6 +4,39 @@ Portable, encrypted memory with an OpenAI-compatible local proxy.
 
 Use one stable local endpoint for your AI clients while switching providers and models without changing your app integration.
 
+## What Is Cortex Brain? (Simple)
+
+Cortex Brain is your memory layer for AI apps.
+Instead of every model starting from zero, Cortex keeps what matters in an encrypted local brain.
+Your app keeps using one OpenAI-compatible endpoint, and Cortex handles memory + provider switching behind it.
+
+In simple terms:
+- your AI app sends requests to Cortex
+- Cortex checks your brain memory
+- Cortex runs deterministic memory execution (RMVM)
+- Cortex returns an OpenAI-compatible response, with verification metadata
+
+## Example (How It Works)
+
+You send:
+```text
+"Remember that I prefer tea."
+```
+
+Later you ask:
+```text
+"What drink do I prefer?"
+```
+
+Cortex can return a normal assistant answer, and include a `cortex` block with proof fields like:
+- `status`
+- `semantic_root`
+- `trace_root`
+
+So you get both:
+- normal chat output for your app
+- auditable memory evidence from Cortex
+
 ## Quick Start (3 Steps)
 
 ### 1) Install (No Rust Required)
