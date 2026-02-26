@@ -4,81 +4,38 @@ Portable, encrypted memory with a local chat-completions proxy.
 
 Use one stable local endpoint for your AI clients while switching providers and models without changing your app integration.
 
-Cortex currently supports the OpenAI-compatible `POST /v1/chat/completions` shape.
-That is the most common compatibility format used by many AI tools.
-It is not a full clone of every OpenAI endpoint.
+## Compatibility
 
-## What Is Cortex Brain? (In Plain English)
+Cortex Brain works with:
+- OpenAI
+- Claude (via OpenAI-compatible endpoint)
+- Gemini (via OpenAI-compatible endpoint)
+- Ollama (local)
+- OpenClaw (point OpenClaw Base URL to Cortex)
+- Any tool that supports OpenAI-compatible chat completions
 
-Cortex Brain is a memory layer that sits between your AI app and your model provider.
-It gives your assistant durable memory without tying you to one model vendor.
-Your app always calls one local OpenAI-compatible endpoint, and Cortex handles memory, execution, and provider routing.
+Scope:
+- Supported: OpenAI-compatible `POST /v1/chat/completions`
+- Not supported: full OpenAI API surface
 
-You can think of it like this:
-- your app talks to `http://127.0.0.1:8080/v1`
-- Cortex reads/writes encrypted brain memory
-- Cortex executes memory logic deterministically through RMVM
-- Cortex returns normal chat output plus verification fields
+## Why Cortex Is Different From Typical Memory
 
-## Why Cortex Is Different
+Most memory today:
+- stores chat chunks in a vector database
+- retrieves top-k similar text
+- asks the model to answer from retrieved text
+- can be inconsistent, hard to debug, and easier to poison
 
-- It is model-provider independent.
-Your memory is in the brain, not inside one model account.
+Cortex memory:
+- executes a validated plan against a manifest
+- uses deterministic RMVM execution instead of free-form recall
+- returns verified output derived from execution
+- includes proof roots (`semantic_root`, `trace_root`) for auditability
 
-- It is deterministic and auditable.
-Memory execution produces proof roots (`semantic_root`, `trace_root`) so you can verify what happened.
-
-- It keeps app integration stable.
-Your client keeps one Base URL and API key while you switch provider/model behind Cortex.
-
-- It has explicit forget semantics.
-Forget is deterministic suppression policy, not silent hidden deletion.
-
-## How It Works Under The Hood
-
-1. Your AI app sends a standard OpenAI-compatible request to Cortex.
-2. Cortex appends the user event and fetches a manifest of available memory handles/selectors.
-3. Cortex resolves a plan (`openai`, `byo`, or `fallback`) and validates it against the manifest.
-4. RMVM executes deterministically and returns assertions, status, and proof roots.
-5. Cortex returns an OpenAI-compatible response with a `cortex` metadata block.
-
-## Why This Works For Long-Term Memory
-
-- Memory is stored in an encrypted local brain, not in a short-lived model session.
-- The endpoint your app uses stays constant even when you switch providers.
-- Execution is deterministic, so behavior is stable and auditable.
-- Responses include proof roots (`semantic_root`, `trace_root`) for traceability.
-- Brains are export/import portable across machines.
-- Forget uses deterministic suppression rules instead of silent deletion.
-
-## Sample Example (What Actually Happens)
-
-Write memory:
-```text
-"Remember that I prefer tea."
-```
-
-When this request reaches Cortex:
-- Cortex appends the event to RMVM input state.
-- RMVM creates/updates memory handles linked to your subject.
-- The brain now has durable memory for this preference.
-
-Later query:
-```text
-"What drink do I prefer?"
-```
-
-When this query reaches Cortex:
-- Cortex gets the memory manifest for available handles/selectors.
-- Cortex builds or receives a plan (`openai`, `byo`, or `fallback`) and validates it.
-- RMVM executes the plan deterministically and returns verified assertions.
-- Cortex returns a normal assistant response in chat-completions format.
-
-Typical outcome in the response:
-- Assistant returns a normal answer (for example: "You prefer tea.")
-- Response also includes `cortex.status`, `cortex.semantic_root`, and `cortex.trace_root`
-
-So you get both human-friendly output and machine-verifiable memory evidence.
+Concrete guarantees:
+- no memory-based claim without evidence (verified assertions only)
+- deterministic behavior (same inputs produce the same `semantic_root`)
+- safe forget semantics (deterministic suppression, not silent deletion)
 
 ## Quick Start (3 Steps)
 
@@ -154,9 +111,28 @@ If you get `STALL` or `REJECTED`, run:
 cortex doctor
 ```
 
+## Trust Test (10 Seconds)
+
+Run the same request twice:
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"remember I prefer tea\"}]}" > resp1.json
+
+curl -sS http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"remember I prefer tea\"}]}" > resp2.json
+```
+
+Check `cortex.semantic_root` in both responses.
+For the same inputs, it should match.
+
 ## Switch AI Provider In 10 Seconds
 
-Switch provider:
+Switch from OpenAI to Claude:
 ```bash
 cortex provider use claude
 ```
@@ -166,7 +142,8 @@ Optional model change:
 cortex provider set-model claude-opus-4-6
 ```
 
-Your AI app settings do not change. Only the planner behind Cortex changes.
+Your AI app settings do not change.
+Base URL and API key stay the same.
 
 Supported profiles:
 - `openai`
