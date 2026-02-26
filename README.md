@@ -96,6 +96,15 @@ export OPENAI_BASE_URL=http://127.0.0.1:8080/v1
 export OPENAI_API_KEY=<your-cortex-proxy-api-key>
 ```
 
+## Daily Use (No CLI Needed)
+
+After setup, normal users just chat in their usual AI app.
+
+- Keep using your existing chat UI.
+- Do not change prompts or workflow.
+- Cortex handles memory write/recall through the proxy.
+- Use CLI commands only for admin tasks: switch provider, export/import, forget, doctor.
+
 ## Does It Work?
 
 ```bash
@@ -113,6 +122,8 @@ cortex doctor
 ```
 
 ## Complete Use Case: Remember, Recall, Switch, Forget
+
+This is an API-level verification flow. In normal usage, you can do the same actions by chatting in your AI app.
 
 ### 1) Write a preference to memory
 
