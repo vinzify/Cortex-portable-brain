@@ -3,9 +3,10 @@
 This baseline keeps proxy behavior deterministic and auditable.
 
 ## Required flags/env
-- `--endpoint` / `CORTEX_ENDPOINT`: RMVM gRPC endpoint.
-- `--planner-mode` / `CORTEX_PLANNER_MODE`: `openai`, `byo`, or `fallback`.
-- `CORTEX_BRAIN_SECRET`: brain encryption key env var.
+- `cortex setup`: writes provider/runtime config and key references.
+- `cortex up`: starts managed RMVM + proxy (or reuses external RMVM).
+- `CORTEX_BRAIN_SECRET`: brain encryption key env var (auto-hydrated by setup/up in v1).
+- `CORTEX_PLANNER_MODE`: `openai`, `byo`, or `fallback`.
 
 ## Recommended limits
 - HTTP request body max: 1 MiB.
@@ -22,8 +23,9 @@ This baseline keeps proxy behavior deterministic and auditable.
 - Enforce `scripts/check_dependency_manifest_hash.ps1` in CI.
 
 ## Operational runbook
-1. Start RMVM gRPC (`rmvm-grpc-server`) pinned to `core_version.lock` tag.
-2. Start proxy with explicit planner mode.
-3. Verify `GET /healthz` returns `ok`.
-4. Send golden `POST /v1/chat/completions` request.
-5. Confirm `X-Cortex-Status`, proof headers, and response schema.
+1. Run `cortex setup` once (interactive or non-interactive).
+2. Run `cortex up`.
+3. If using external RMVM, set `--rmvm-endpoint` during setup/up.
+4. Verify `GET /healthz` returns `ok`.
+5. Send golden `POST /v1/chat/completions` request.
+6. Confirm `X-Cortex-Status`, proof headers, and response schema.

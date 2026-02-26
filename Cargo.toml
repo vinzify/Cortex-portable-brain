@@ -4,6 +4,7 @@ members = [
   "crates/adapter-rmvm",
   "crates/planner-guard",
   "crates/cortex-app",
+  "crates/rmvm-sidecar",
 ]
 resolver = "2"
 

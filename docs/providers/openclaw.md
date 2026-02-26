@@ -3,7 +3,6 @@
 ## Prerequisites
 - `cortex` binary installed
 - OpenClaw installed
-- RMVM gRPC server running on `grpc://127.0.0.1:50051`
 
 ## Environment
 ```bash
@@ -41,9 +40,8 @@ Add this provider in your OpenClaw config:
 
 ## Smoke Test
 ```bash
-cortex brain create personal
-cortex auth map-key --api-key ctx_demo_key --tenant local --brain personal
-cortex proxy serve --brain personal --endpoint grpc://127.0.0.1:50051
+cortex setup --non-interactive --provider openai --brain personal --api-key ctx_demo_key
+cortex up
 ```
 
 Then set OpenClaw to provider `cortex`, model `cortex-brain`, and send one user message.

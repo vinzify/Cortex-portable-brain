@@ -88,22 +88,35 @@ jobs:
           EOF
 
       - name: Build Release Binary
-        run: cargo build --locked -p cortex-app --bin cortex --release
+        run: |
+          cargo build --locked -p cortex-app --bin cortex --release
+          cargo build --locked -p rmvm-sidecar --bin rmvm-grpc-server --release
 
       - name: Package Binary + Checksum
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          $binPath = if ("${{ matrix.os }}" -eq "windows") {
+          $ext = if ("${{ matrix.os }}" -eq "windows") { ".exe" } else { "" }
+
+          $cortexBin = if ("${{ matrix.os }}" -eq "windows") {
             "target/release/cortex.exe"
           } else {
             "target/release/cortex"
           }
-          $ext = if ("${{ matrix.os }}" -eq "windows") { ".exe" } else { "" }
-          $asset = "cortex-app-${{ matrix.os }}-${{ matrix.arch }}$ext"
-          Copy-Item $binPath "release/$asset"
-          $hash = (Get-FileHash "release/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
-          Set-Content -Path "release/$asset.sha256" -Value "$hash  $asset" -Encoding utf8NoBOM
+          $cortexAsset = "cortex-app-${{ matrix.os }}-${{ matrix.arch }}$ext"
+          Copy-Item $cortexBin "release/$cortexAsset"
+          $cortexHash = (Get-FileHash "release/$cortexAsset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path "release/$cortexAsset.sha256" -Value "$cortexHash  $cortexAsset" -Encoding utf8NoBOM
+
+          $rmvmBin = if ("${{ matrix.os }}" -eq "windows") {
+            "target/release/rmvm-grpc-server.exe"
+          } else {
+            "target/release/rmvm-grpc-server"
+          }
+          $rmvmAsset = "rmvm-grpc-server-${{ matrix.os }}-${{ matrix.arch }}$ext"
+          Copy-Item $rmvmBin "release/$rmvmAsset"
+          $rmvmHash = (Get-FileHash "release/$rmvmAsset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path "release/$rmvmAsset.sha256" -Value "$rmvmHash  $rmvmAsset" -Encoding utf8NoBOM
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

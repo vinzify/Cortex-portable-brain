@@ -1,6 +1,8 @@
 # Proxy Mode v0
 
-`cortex proxy serve` exposes an OpenAI-compatible endpoint.
+`cortex up` starts RMVM + proxy and exposes an OpenAI-compatible endpoint.
+
+You can still run `cortex proxy serve` directly for advanced/manual setups.
 
 ## Endpoint
 - `POST /v1/chat/completions`
@@ -30,8 +32,9 @@
 - `fallback`: deterministic local plan generation for development fallback.
 
 ## Modes
-- Local mode: `--endpoint grpc://127.0.0.1:50051`
-- Cloud mode: same adapter API, different endpoint URL later
+- Managed local mode: `cortex up` spawns/reuses local RMVM endpoint and starts proxy.
+- External mode: pass `--rmvm-endpoint` in `cortex setup`/`cortex up`.
+- Cloud mode: same adapter API, different endpoint URL later.
 
 ## Environment UX
 - `CORTEX_BRAIN` default brain
@@ -41,3 +44,9 @@
 - `CORTEX_PLANNER_MODEL` planner model name
 - `CORTEX_PLANNER_API_KEY` planner key
 - `OPENAI_BASE_URL` point existing clients to proxy `/v1`
+
+## Quick Runtime Commands
+- `cortex up`
+- `cortex status`
+- `cortex logs --service all --follow`
+- `cortex stop --all`

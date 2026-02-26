@@ -1,58 +1,57 @@
 # Cortex Brain
 
-Portable brain workspace and OpenAI-compatible proxy for Cortex RMVM.
+Portable, encrypted memory with an OpenAI-compatible local proxy.
 
-Use your existing OpenAI-compatible clients. Keep one encrypted brain. Switch model providers without changing your app integration.
+Use one stable local endpoint for your AI clients while switching providers and models without changing your app integration.
 
-## Quick Start (Under 2 Minutes)
-
-Prereq: you need an RMVM endpoint running at `grpc://127.0.0.1:50051`. Core repo: [Cortex-v3.1-RMVM---Relational-Memory-Virtual-Machine](https://github.com/vinzify/Cortex-v3.1-RMVM---Relational-Memory-Virtual-Machine). Start it with:
-```bash
-cargo run -p rmvm-grpc --bin rmvm-grpc-server
-```
+## Quick Start (Beginner Path)
 
 ### 1) Install (No Rust Required)
 
-#### macOS/Linux
+macOS/Linux:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/vinzify/Cortex-portable-brain/main/install/install.sh | sh
 ```
 
-#### Windows PowerShell
+Windows PowerShell:
 ```powershell
 irm https://raw.githubusercontent.com/vinzify/Cortex-portable-brain/main/install/install.ps1 | iex
 ```
 
-#### Docker
+Docker:
 ```bash
 docker run --rm -p 8080:8080 ghcr.io/vinzify/cortex-portable-brain:latest
 ```
 
-### 2) Create a brain and start the proxy
+The installer runs `cortex setup` automatically in interactive terminals.
+
+### 2) Start everything
 
 ```bash
-cortex brain create personal
-cortex auth map-key --api-key ctx_demo_key --tenant local --brain personal
-cortex proxy serve --brain personal --endpoint grpc://127.0.0.1:50051
+cortex up
 ```
 
-### 3) Point your OpenAI-compatible client to Cortex
+`cortex up` starts:
+- RMVM gRPC runtime (managed sidecar by default)
+- Cortex proxy on `http://127.0.0.1:8080`
+
+### 3) Point your existing OpenAI-compatible client to Cortex
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8080/v1
-export OPENAI_API_KEY=ctx_demo_key
+export OPENAI_API_KEY=<your-cortex-proxy-api-key>
 ```
 
 ### 60-Second Smoke Test
 
 ```bash
 curl -sS -i http://127.0.0.1:8080/v1/chat/completions \
-  -H "Authorization: Bearer ctx_demo_key" \
+  -H "Authorization: Bearer <your-cortex-proxy-api-key>" \
   -H "Content-Type: application/json" \
   -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"remember I prefer tea\"}]}"
 ```
 
-Expected success shape:
+Expected shape:
 ```bash
 HTTP/1.1 200 OK
 ...
@@ -64,95 +63,146 @@ If you get `STALL` or `REJECTED`, run:
 cortex doctor
 ```
 
-## What Cortex Brain Is
+## One-Command Provider Switching
 
-- `cortex` CLI (`brain`, `proxy`, `auth`, `doctor`)
-- encrypted local brain store
-- OpenAI-compatible `POST /v1/chat/completions` proxy
-- planner modes: `openai`, `byo`, `fallback`
+Switch planner provider:
+```bash
+cortex provider use claude
+```
 
-This repository is intentionally separate from RMVM core to keep release cadence, onboarding, and security boundaries independent.
+Set model:
+```bash
+cortex provider set-model claude-opus-4-6
+```
 
-## Why Portable
+Supported profiles:
+- `openai`
+- `claude`
+- `gemini`
+- `ollama`
+- `byo`
 
-- The same brain works across OpenAI, Claude, Gemini, and local models because the interface is the proxy plus the RMVM plan contract.
-- Export and import are encrypted and signed so you can move a brain between machines safely.
-- Attachments and permissions let you connect multiple AIs without giving every model full access.
-- Proof roots let you audit what memory was used across providers.
-- Forget is deterministic suppression, not silent deletion.
+Client-facing URL stays stable:
+- `OPENAI_BASE_URL=http://127.0.0.1:8080/v1`
 
-## Use Cases
+## Brain Management
 
-### 1) Personal Assistant With Changing Preferences
-Keep preferences stable over time and across providers with deterministic conflict handling.
+Show current brain:
+```bash
+cortex brain current
+```
 
+List and switch:
+```bash
+cortex brain list
+cortex brain use <brain-id-or-name>
+```
+
+Export and import:
+```bash
+cortex brain export <brain-id-or-name> --out personal.cbrain
+cortex brain import --in personal.cbrain --name personal
+```
+
+Forget (suppression):
 ```bash
 cortex brain forget --subject user:local --predicate prefers_beverage --reason "suppress preference"
 ```
 
-### 2) Coding Agent Safety
-Restrict what an agent can read, write, and sink to reduce unsafe tool behavior from untrusted inputs.
+## Runtime Controls
 
+Start:
 ```bash
-cortex brain attach --agent coder --model gpt-4o --read normative.preference,project.note --write project.note --sinks narrative
+cortex up
 ```
 
-### 3) Enterprise Audit Trail
-Use proof metadata (`semantic_root`, `trace_root`) in logs for traceable review.
-
+Stop:
 ```bash
-curl -i http://127.0.0.1:8080/v1/chat/completions -H "Authorization: Bearer ctx_demo_key" -H "Content-Type: application/json" -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"What do I prefer?\"}]}"
+cortex stop --all
 ```
 
-## Bring Your Brain To Another AI
-
-Export on machine A:
+Status:
 ```bash
-cortex brain export personal --out personal.cbrain
+cortex status --verbose
+cortex status --copy
 ```
 
-Import on machine B:
+Logs:
 ```bash
-cortex brain import --in personal.cbrain --name personal
-cortex brain use personal
+cortex logs --service all --tail 200 --follow
 ```
 
-Switch planner from OpenAI to Claude while keeping the same brain:
+## Guided Setup
+
+Interactive:
 ```bash
-export CORTEX_PLANNER_MODE=openai
-export CORTEX_PLANNER_BASE_URL=https://api.anthropic.com/v1/
-export CORTEX_PLANNER_API_KEY=$ANTHROPIC_API_KEY
-export CORTEX_PLANNER_MODEL=claude-opus-4-6
-cortex proxy serve --brain personal --addr 127.0.0.1:8080
+cortex setup
 ```
 
-Your existing OpenAI-compatible client keeps working. Only `OPENAI_BASE_URL` changes to point at Cortex.
+Non-interactive:
+```bash
+cortex setup --non-interactive --provider openai --brain personal --api-key ctx_demo_key
+```
 
-## Provider Guides
+External RMVM endpoint (optional):
+```bash
+cortex setup --non-interactive --rmvm-endpoint grpc://127.0.0.1:50051
+```
+
+## What Cortex Brain Includes
+
+- `cortex` CLI (`setup`, `up`, `stop`, `status`, `logs`, `provider`, `brain`, `auth`, `doctor`)
+- Encrypted local brain store with export/import
+- OpenAI-compatible `POST /v1/chat/completions` proxy
+- Planner modes: `openai`, `byo`, `fallback`
+- Managed RMVM sidecar runtime by default
+
+## Three Common Use Cases
+
+### 1) Personal assistant with evolving preferences
+Keep durable preferences across providers and apply deterministic suppression when needed.
+
+### 2) Coding agent safety
+Control read/write classes and sink permissions per attached agent.
+
+### 3) Enterprise auditability
+Use `semantic_root` and `trace_root` for traceable memory-backed responses.
+
+## Provider Docs
 
 - OpenAI planner: `docs/providers/openai.md`
-- Claude planner (Anthropic OpenAI-compatible endpoint): `docs/providers/claude.md`
-- Gemini planner (Google OpenAI-compatible endpoint): `docs/providers/gemini.md`
+- Claude planner: `docs/providers/claude.md`
+- Gemini planner: `docs/providers/gemini.md`
 - OpenClaw integration: `docs/providers/openclaw.md`
 
 ## Diagnostics
 
-Run before filing an issue:
 ```bash
 cortex doctor
 ```
 
-It verifies:
-- proxy reachability (`/healthz`)
-- planner reachability (mode-aware)
+Checks include:
+- proxy reachability
+- planner reachability
 - brain unlock state
 - API key mapping
-- one dry-run `appendEvent -> getManifest -> execute` and prints `semantic_root`
+- dry-run `appendEvent -> getManifest -> execute`
 
-## CLI Surface (Full Reference)
+## Full CLI Surface
 
 ```bash
+cortex setup [--non-interactive] [--provider <name>] [--model <model>] [--brain <name>] [--api-key <key>] [--rmvm-endpoint <grpc-url>]
+cortex up [--provider <name>] [--brain <name>] [--proxy-addr <host:port>] [--rmvm-endpoint <grpc-url>] [--rmvm-port <port>]
+cortex stop [--all|--proxy-only|--rmvm-only] [--force]
+cortex status [--json] [--verbose] [--copy]
+cortex logs [--service proxy|rmvm|all] [--tail <n>] [--follow]
+
+cortex provider list [--json]
+cortex provider use <name> [--model <model>] [--restart auto|never]
+cortex provider set-model <model> [--provider <name>] [--restart auto|never]
+
 cortex brain create <name> [--tenant <id>] [--passphrase-env <ENV>]
+cortex brain current [--json]
 cortex brain use <brain-id-or-name>
 cortex brain list [--json]
 cortex brain export <brain-id-or-name> --out <file.cbrain>
@@ -161,9 +211,12 @@ cortex brain branch <brain-id-or-name> --new <branch-name>
 cortex brain merge --source <branch> --target <branch> [--strategy ours|theirs|manual] [--brain <id>]
 cortex brain forget --subject <subject> --predicate <predicate> [--scope <scope>] [--reason <text>] [--brain <id>]
 cortex brain attach --agent <id> --model <id> --read <csv> --write <csv> --sinks <csv> [--ttl <duration>] [--brain <id>]
-cortex proxy serve --addr 127.0.0.1:8080 --endpoint grpc://127.0.0.1:50051 --planner-mode openai
-cortex auth map-key --api-key <key> --tenant <tenant> --brain <brain-id>
+cortex brain detach --agent <id> [--model <id>] [--brain <id>]
+cortex brain audit [--since <iso>] [--until <iso>] [--subject <subject>] [--json] [--brain <id>]
+
+cortex auth map-key --api-key <key> --tenant <tenant> --brain <brain-id> [--subject <subject>]
 cortex doctor [--proxy-base-url <url>] [--endpoint <grpc-url>] [--brain <id>] [--planner-mode openai|byo|fallback]
+cortex open [--print-only] [--url]
 ```
 
 ## Environment Variables
@@ -177,21 +230,26 @@ cortex doctor [--proxy-base-url <url>] [--endpoint <grpc-url>] [--brain <id>] [-
 - `CORTEX_PLANNER_API_KEY`
 - `OPENAI_BASE_URL`
 - `OPENAI_API_KEY`
+- `RMVM_SERVER_ADDR`
+- `RMVM_MAX_DECODING_BYTES`
+- `RMVM_MAX_ENCODING_BYTES`
+- `RMVM_REQUEST_TIMEOUT_SECS`
 
 ## Developer Build
 
 ```bash
 cargo test --locked
-cargo run -p cortex-app -- proxy serve --addr 127.0.0.1:8080 --endpoint grpc://127.0.0.1:50051 --planner-mode openai
+cargo run -p cortex-app -- setup --non-interactive --provider ollama --brain demo --api-key ctx_demo_key
+cargo run -p cortex-app -- up
 ```
 
 ## Compatibility
 
-Pinned RMVM core contract is defined in:
+Pinned RMVM core contract:
 - `core_version.lock`
 - `docs/compatibility_matrix.md`
 
-## Operations And Security
+## Operations and Security
 
 - `docs/operations/server_config.md`
 - `docs/operations/baseline_update_policy.md`
@@ -204,5 +262,5 @@ Pinned RMVM core contract is defined in:
 
 ## Migration
 
-If you were using `portable-brain-proxy` in `cortex-rmvm`, use:
+If you used `portable-brain-proxy` inside `cortex-rmvm`:
 - `docs/migration_from_cortex_rmvm.md`

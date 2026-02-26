@@ -5,7 +5,20 @@ use adapter_rmvm::RmvmAdapter;
 use anyhow::{Result, bail};
 use brain_store::{AttachmentGrant, BrainStore, CreateBrainRequest, MergeStrategy};
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use planner_guard::deterministic_plan_from_manifest;
+use reqwest::Client;
+use rmvm_grpc::{
+    AppendEventRequest, GetManifestRequest, GrpcKernelService, RmvmExecutorServer,
+};
+use rmvm_proto::{ExecuteRequest, ExecutionStatus, Scope};
+use tonic::transport::Server;
+use uuid::Uuid;
 
+use crate::product::{
+    LogsRequest, RestartPolicy, SetupRequest, StatusRequest, StopRequest, UpRequest, brain_current,
+    ensure_saved_brain_secret_env, load_saved_proxy_api_key, open_config, provider_list,
+    provider_set_model, provider_use, run_logs, run_setup, run_status, run_stop, run_up,
+};
 use crate::proxy::{PlannerConfig, PlannerMode, ProxyConfig, parse_addr, serve};
 
 #[derive(Debug, Parser)]
@@ -29,6 +42,22 @@ enum TopCommand {
         #[command(subcommand)]
         command: AuthCommand,
     },
+    Doctor(DoctorCmd),
+    Setup(SetupCmd),
+    Up(UpCmd),
+    Stop(StopCmd),
+    Status(StatusCmd),
+    Logs(LogsCmd),
+    Provider {
+        #[command(subcommand)]
+        command: ProviderCommand,
+    },
+    Open(OpenCmd),
+    #[command(hide = true)]
+    Rmvm {
+        #[command(subcommand)]
+        command: RmvmCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -45,6 +74,7 @@ enum BrainCommand {
     Attach(AttachCmd),
     Detach(DetachCmd),
     Audit(AuditCmd),
+    Current(CurrentCmd),
 }
 
 #[derive(Debug, Subcommand)]
@@ -55,6 +85,18 @@ enum ProxyCommand {
 #[derive(Debug, Subcommand)]
 enum AuthCommand {
     MapKey(MapKeyCmd),
+}
+
+#[derive(Debug, Subcommand)]
+enum ProviderCommand {
+    List(ProviderListCmd),
+    Use(ProviderUseCmd),
+    SetModel(ProviderSetModelCmd),
+}
+
+#[derive(Debug, Subcommand)]
+enum RmvmCommand {
+    Serve(RmvmServeCmd),
 }
 
 #[derive(Debug, Args)]
@@ -220,16 +262,192 @@ struct MapKeyCmd {
     subject: String,
 }
 
+#[derive(Debug, Args)]
+struct DoctorCmd {
+    #[arg(long, env = "OPENAI_BASE_URL", default_value = "http://127.0.0.1:8080/v1")]
+    proxy_base_url: String,
+    #[arg(
+        long,
+        env = "CORTEX_ENDPOINT",
+        default_value = "grpc://127.0.0.1:50051"
+    )]
+    endpoint: String,
+    #[arg(long, env = "CORTEX_BRAIN")]
+    brain: Option<String>,
+    #[arg(long, env = "OPENAI_API_KEY")]
+    api_key: Option<String>,
+    #[arg(long, env = "CORTEX_PLANNER_MODE", default_value = "fallback")]
+    planner_mode: String,
+    #[arg(
+        long,
+        env = "CORTEX_PLANNER_BASE_URL",
+        default_value = "https://api.openai.com/v1"
+    )]
+    planner_base_url: String,
+    #[arg(long, env = "CORTEX_PLANNER_MODEL", default_value = "gpt-4o-mini")]
+    planner_model: String,
+    #[arg(long, env = "CORTEX_PLANNER_API_KEY")]
+    planner_api_key: Option<String>,
+    #[arg(long, default_value = "10")]
+    timeout_secs: u64,
+}
+
+struct DoctorCheck {
+    label: &'static str,
+    ok: bool,
+    details: String,
+}
+
+#[derive(Debug, Args)]
+struct SetupCmd {
+    #[arg(long)]
+    non_interactive: bool,
+    #[arg(long)]
+    provider: Option<String>,
+    #[arg(long)]
+    model: Option<String>,
+    #[arg(long)]
+    planner_base_url: Option<String>,
+    #[arg(long)]
+    planner_api_key: Option<String>,
+    #[arg(long)]
+    planner_api_key_env: Option<String>,
+    #[arg(long)]
+    brain: Option<String>,
+    #[arg(long, default_value = "local")]
+    tenant: String,
+    #[arg(long = "api-key")]
+    api_key: Option<String>,
+    #[arg(long)]
+    rmvm_endpoint: Option<String>,
+    #[arg(long)]
+    proxy_addr: Option<String>,
+    #[arg(long)]
+    rmvm_port: Option<u16>,
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(Debug, Args)]
+struct UpCmd {
+    #[arg(long, default_value = "true")]
+    detached: String,
+    #[arg(long)]
+    proxy_addr: Option<String>,
+    #[arg(long)]
+    rmvm_endpoint: Option<String>,
+    #[arg(long)]
+    rmvm_port: Option<u16>,
+    #[arg(long)]
+    brain: Option<String>,
+    #[arg(long)]
+    provider: Option<String>,
+    #[arg(long, default_value_t = true)]
+    reuse_external_rmvm: bool,
+}
+
+#[derive(Debug, Args)]
+struct StopCmd {
+    #[arg(long)]
+    all: bool,
+    #[arg(long)]
+    proxy_only: bool,
+    #[arg(long)]
+    rmvm_only: bool,
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(Debug, Args)]
+struct StatusCmd {
+    #[arg(long)]
+    json: bool,
+    #[arg(long)]
+    verbose: bool,
+    #[arg(long)]
+    copy: bool,
+}
+
+#[derive(Debug, Args)]
+struct LogsCmd {
+    #[arg(long, default_value = "all")]
+    service: String,
+    #[arg(long, default_value_t = 100)]
+    tail: usize,
+    #[arg(long)]
+    follow: bool,
+}
+
+#[derive(Debug, Args)]
+struct ProviderListCmd {
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct ProviderUseCmd {
+    name: String,
+    #[arg(long)]
+    model: Option<String>,
+    #[arg(long, default_value = "auto")]
+    restart: String,
+}
+
+#[derive(Debug, Args)]
+struct ProviderSetModelCmd {
+    model: String,
+    #[arg(long)]
+    provider: Option<String>,
+    #[arg(long, default_value = "auto")]
+    restart: String,
+}
+
+#[derive(Debug, Args)]
+struct CurrentCmd {
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct OpenCmd {
+    #[arg(long)]
+    print_only: bool,
+    #[arg(long)]
+    url: bool,
+}
+
+#[derive(Debug, Args)]
+struct RmvmServeCmd {
+    #[arg(long, env = "RMVM_SERVER_ADDR", default_value = "127.0.0.1:50051")]
+    addr: String,
+    #[arg(long, env = "RMVM_MAX_DECODING_BYTES", default_value_t = 4 * 1024 * 1024)]
+    max_decoding_bytes: usize,
+    #[arg(long, env = "RMVM_MAX_ENCODING_BYTES", default_value_t = 4 * 1024 * 1024)]
+    max_encoding_bytes: usize,
+    #[arg(long, env = "RMVM_REQUEST_TIMEOUT_SECS", default_value_t = 30)]
+    request_timeout_secs: u64,
+}
+
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         TopCommand::Brain { command } => handle_brain(command).await,
         TopCommand::Proxy { command } => handle_proxy(command).await,
         TopCommand::Auth { command } => handle_auth(command).await,
+        TopCommand::Doctor(command) => handle_doctor(command).await,
+        TopCommand::Setup(command) => handle_setup(command).await,
+        TopCommand::Up(command) => handle_up(command).await,
+        TopCommand::Stop(command) => handle_stop(command).await,
+        TopCommand::Status(command) => handle_status(command).await,
+        TopCommand::Logs(command) => handle_logs(command).await,
+        TopCommand::Provider { command } => handle_provider(command).await,
+        TopCommand::Open(command) => handle_open(command).await,
+        TopCommand::Rmvm { command } => handle_rmvm(command).await,
     }
 }
 
 async fn handle_brain(cmd: BrainCommand) -> Result<()> {
+    let _ = ensure_saved_brain_secret_env();
     let store = BrainStore::new(None)?;
     match cmd {
         BrainCommand::Create(c) => {
@@ -353,6 +571,9 @@ async fn handle_brain(cmd: BrainCommand) -> Result<()> {
                 }
             }
         }
+        BrainCommand::Current(c) => {
+            brain_current(c.json)?;
+        }
     }
     Ok(())
 }
@@ -400,6 +621,436 @@ async fn handle_auth(cmd: AuthCommand) -> Result<()> {
         }
     }
     Ok(())
+}
+
+async fn handle_setup(cmd: SetupCmd) -> Result<()> {
+    let out = run_setup(SetupRequest {
+        non_interactive: cmd.non_interactive,
+        provider: cmd.provider,
+        model: cmd.model,
+        planner_base_url: cmd.planner_base_url,
+        planner_api_key: cmd.planner_api_key,
+        planner_api_key_env: cmd.planner_api_key_env,
+        brain: cmd.brain,
+        tenant: cmd.tenant,
+        api_key: cmd.api_key,
+        rmvm_endpoint: cmd.rmvm_endpoint,
+        proxy_addr: cmd.proxy_addr,
+        rmvm_port: cmd.rmvm_port,
+        force: cmd.force,
+    })?;
+    println!("Setup complete:");
+    println!("  brain={}", out.brain_id);
+    println!("  provider={} model={}", out.provider, out.model);
+    println!("  proxy=http://{}", out.proxy_addr);
+    println!("  rmvm={} ({})", out.rmvm_mode, out.rmvm_endpoint);
+    println!("Next: cortex up");
+    Ok(())
+}
+
+async fn handle_up(cmd: UpCmd) -> Result<()> {
+    run_up(UpRequest {
+        detached: parse_bool_flag("detached", &cmd.detached)?,
+        proxy_addr: cmd.proxy_addr,
+        rmvm_endpoint: cmd.rmvm_endpoint,
+        rmvm_port: cmd.rmvm_port,
+        brain: cmd.brain,
+        provider: cmd.provider,
+        reuse_external_rmvm: cmd.reuse_external_rmvm,
+    })
+    .await
+}
+
+async fn handle_stop(cmd: StopCmd) -> Result<()> {
+    run_stop(StopRequest {
+        all: cmd.all,
+        proxy_only: cmd.proxy_only,
+        rmvm_only: cmd.rmvm_only,
+        force: cmd.force,
+    })
+}
+
+async fn handle_status(cmd: StatusCmd) -> Result<()> {
+    run_status(StatusRequest {
+        json: cmd.json,
+        verbose: cmd.verbose,
+        copy: cmd.copy,
+    })
+    .await
+}
+
+async fn handle_logs(cmd: LogsCmd) -> Result<()> {
+    run_logs(LogsRequest {
+        service: cmd.service,
+        tail: cmd.tail,
+        follow: cmd.follow,
+    })
+    .await
+}
+
+async fn handle_provider(cmd: ProviderCommand) -> Result<()> {
+    match cmd {
+        ProviderCommand::List(c) => provider_list(c.json).await,
+        ProviderCommand::Use(c) => {
+            provider_use(&c.name, c.model, parse_restart_policy(&c.restart)?).await
+        }
+        ProviderCommand::SetModel(c) => {
+            provider_set_model(c.provider, c.model, parse_restart_policy(&c.restart)?).await
+        }
+    }
+}
+
+async fn handle_open(cmd: OpenCmd) -> Result<()> {
+    open_config(cmd.print_only, cmd.url).await
+}
+
+async fn handle_rmvm(cmd: RmvmCommand) -> Result<()> {
+    match cmd {
+        RmvmCommand::Serve(c) => {
+            let addr = c
+                .addr
+                .parse()
+                .map_err(|e| anyhow::anyhow!("invalid RMVM address '{}': {e}", c.addr))?;
+            let service = GrpcKernelService::default();
+            let service = RmvmExecutorServer::new(service)
+                .max_decoding_message_size(c.max_decoding_bytes)
+                .max_encoding_message_size(c.max_encoding_bytes);
+            println!(
+                "RMVM gRPC server listening on {} (decode={} encode={} timeout={}s)",
+                addr, c.max_decoding_bytes, c.max_encoding_bytes, c.request_timeout_secs
+            );
+            Server::builder()
+                .timeout(Duration::from_secs(c.request_timeout_secs))
+                .add_service(service)
+                .serve(addr)
+                .await?;
+            Ok(())
+        }
+    }
+}
+
+async fn handle_doctor(cmd: DoctorCmd) -> Result<()> {
+    let _ = ensure_saved_brain_secret_env();
+    let timeout = Duration::from_secs(cmd.timeout_secs);
+    let http = Client::builder().timeout(timeout).build()?;
+    let store = BrainStore::new(None)?;
+
+    let planner_mode = PlannerMode::parse(&cmd.planner_mode)?;
+    let proxy_base_url = cmd.proxy_base_url.trim_end_matches('/').to_string();
+    let healthz_url = derive_healthz_url(&proxy_base_url);
+    let planner_api_key = cmd
+        .planner_api_key
+        .clone()
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok());
+    let resolved_proxy_api_key = cmd
+        .api_key
+        .clone()
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+        .or_else(|| load_saved_proxy_api_key().ok().flatten());
+
+    let mut failures = 0usize;
+    let mut subject_for_dry_run = "user:local".to_string();
+    let mut active_brain_id: Option<String> = None;
+
+    let brain_check = match store.resolve_brain_or_active(cmd.brain.as_deref()) {
+        Ok(brain) => {
+            active_brain_id = Some(brain.brain_id.clone());
+            DoctorCheck {
+                label: "brain_unlocked",
+                ok: true,
+                details: format!("brain={} tenant={}", brain.brain_id, brain.tenant_id),
+            }
+        }
+        Err(e) => DoctorCheck {
+            label: "brain_unlocked",
+            ok: false,
+            details: format!("could not resolve active brain: {e}"),
+        },
+    };
+    failures += print_doctor_check(brain_check);
+
+    let api_key_check = match resolved_proxy_api_key.as_deref() {
+        Some(api_key) => match store.resolve_api_key(api_key) {
+            Ok(Some(mapping)) => {
+                if let Some(expected_brain) = active_brain_id.as_deref() {
+                    if mapping.brain_id != expected_brain {
+                        DoctorCheck {
+                            label: "api_key_mapped",
+                            ok: false,
+                            details: format!(
+                                "mapped to brain {} but active brain is {}",
+                                mapping.brain_id, expected_brain
+                            ),
+                        }
+                    } else {
+                        subject_for_dry_run = mapping.subject.clone();
+                        DoctorCheck {
+                            label: "api_key_mapped",
+                            ok: true,
+                            details: format!(
+                                "tenant={} brain={} subject={}",
+                                mapping.tenant_id, mapping.brain_id, mapping.subject
+                            ),
+                        }
+                    }
+                } else {
+                    subject_for_dry_run = mapping.subject.clone();
+                    DoctorCheck {
+                        label: "api_key_mapped",
+                        ok: true,
+                        details: format!(
+                            "tenant={} brain={} subject={}",
+                            mapping.tenant_id, mapping.brain_id, mapping.subject
+                        ),
+                    }
+                }
+            }
+            Ok(None) => DoctorCheck {
+                label: "api_key_mapped",
+                ok: false,
+                details: "API key is not mapped; run cortex auth map-key".to_string(),
+            },
+            Err(e) => DoctorCheck {
+                label: "api_key_mapped",
+                ok: false,
+                details: format!("failed to resolve API key: {e}"),
+            },
+        },
+        None => DoctorCheck {
+            label: "api_key_mapped",
+            ok: false,
+            details: "missing API key; set OPENAI_API_KEY or pass --api-key".to_string(),
+        },
+    };
+    failures += print_doctor_check(api_key_check);
+
+    let planner_check = match planner_mode {
+        PlannerMode::Fallback => DoctorCheck {
+            label: "planner_reachable",
+            ok: true,
+            details: "planner mode is fallback (no remote planner required)".to_string(),
+        },
+        PlannerMode::ByoHeader => DoctorCheck {
+            label: "planner_reachable",
+            ok: true,
+            details: "planner mode is byo; per-request X-Cortex-Plan header expected".to_string(),
+        },
+        PlannerMode::OpenAi => match planner_api_key {
+            Some(api_key) => {
+                let planner_url = format!(
+                    "{}/chat/completions",
+                    cmd.planner_base_url.trim_end_matches('/')
+                );
+                let payload = serde_json::json!({
+                    "model": cmd.planner_model,
+                    "messages": [{"role": "user", "content": "Return only {}"}],
+                    "temperature": 0,
+                    "max_tokens": 1
+                });
+                match http
+                    .post(&planner_url)
+                    .bearer_auth(api_key)
+                    .json(&payload)
+                    .send()
+                    .await
+                {
+                    Ok(response) => {
+                        let status = response.status();
+                        if status.is_server_error() {
+                            DoctorCheck {
+                                label: "planner_reachable",
+                                ok: false,
+                                details: format!("planner endpoint returned HTTP {}", status),
+                            }
+                        } else {
+                            DoctorCheck {
+                                label: "planner_reachable",
+                                ok: true,
+                                details: format!("planner endpoint reachable (HTTP {})", status),
+                            }
+                        }
+                    }
+                    Err(e) => DoctorCheck {
+                        label: "planner_reachable",
+                        ok: false,
+                        details: format!("planner request failed: {e}"),
+                    },
+                }
+            }
+            None => DoctorCheck {
+                label: "planner_reachable",
+                ok: false,
+                details: "openai planner mode requires CORTEX_PLANNER_API_KEY or OPENAI_API_KEY"
+                    .to_string(),
+            },
+        },
+    };
+    failures += print_doctor_check(planner_check);
+
+    let proxy_check = match http.get(&healthz_url).send().await {
+        Ok(response) => {
+            let status = response.status();
+            match response.text().await {
+                Ok(body) if status.is_success() && body.trim().eq_ignore_ascii_case("ok") => {
+                    DoctorCheck {
+                        label: "proxy_reachable",
+                        ok: true,
+                        details: format!("{} -> {}", healthz_url, status),
+                    }
+                }
+                Ok(body) => DoctorCheck {
+                    label: "proxy_reachable",
+                    ok: false,
+                    details: format!(
+                        "{} responded HTTP {} body='{}'",
+                        healthz_url,
+                        status,
+                        body.trim()
+                    ),
+                },
+                Err(e) => DoctorCheck {
+                    label: "proxy_reachable",
+                    ok: false,
+                    details: format!("failed to read /healthz response: {e}"),
+                },
+            }
+        }
+        Err(e) => DoctorCheck {
+            label: "proxy_reachable",
+            ok: false,
+            details: format!("could not reach {}: {e}", healthz_url),
+        },
+    };
+    failures += print_doctor_check(proxy_check);
+
+    let dry_run_check = run_dry_execute_check(&cmd.endpoint, &subject_for_dry_run).await;
+    failures += print_doctor_check(dry_run_check);
+
+    if failures > 0 {
+        bail!("doctor found {} failing check(s)", failures);
+    }
+
+    println!("doctor summary: all checks passed");
+    Ok(())
+}
+
+async fn run_dry_execute_check(endpoint: &str, subject: &str) -> DoctorCheck {
+    let adapter = RmvmAdapter::new(endpoint.to_string());
+    let request_id = format!("doctor-{}", Uuid::new_v4().simple());
+
+    if let Err(e) = adapter
+        .append_event(AppendEventRequest {
+            request_id: request_id.clone(),
+            subject: subject.to_string(),
+            text: "[doctor] dry-run memory check".to_string(),
+            scope: Scope::Global as i32,
+        })
+        .await
+    {
+        return DoctorCheck {
+            label: "dry_run_execute",
+            ok: false,
+            details: format!("append_event failed on {}: {e}", adapter.endpoint()),
+        };
+    }
+
+    let manifest = match adapter
+        .get_manifest(GetManifestRequest {
+            request_id: request_id.clone(),
+        })
+        .await
+    {
+        Ok(resp) => match resp.manifest {
+            Some(manifest) => manifest,
+            None => {
+                return DoctorCheck {
+                    label: "dry_run_execute",
+                    ok: false,
+                    details: "get_manifest returned no manifest".to_string(),
+                };
+            }
+        },
+        Err(e) => {
+            return DoctorCheck {
+                label: "dry_run_execute",
+                ok: false,
+                details: format!("get_manifest failed: {e}"),
+            };
+        }
+    };
+
+    let plan = match deterministic_plan_from_manifest(&request_id, subject, &manifest) {
+        Ok(plan) => plan,
+        Err(e) => {
+            return DoctorCheck {
+                label: "dry_run_execute",
+                ok: false,
+                details: format!("could not build deterministic plan from manifest: {e}"),
+            };
+        }
+    };
+
+    match adapter
+        .execute(ExecuteRequest {
+            manifest: Some(manifest),
+            plan: Some(plan),
+        })
+        .await
+    {
+        Ok(execute) => {
+            let status =
+                ExecutionStatus::try_from(execute.status).unwrap_or(ExecutionStatus::Unspecified);
+            let semantic_root = execute
+                .proof
+                .as_ref()
+                .map(|p| p.semantic_root.clone())
+                .unwrap_or_else(|| "<none>".to_string());
+            DoctorCheck {
+                label: "dry_run_execute",
+                ok: true,
+                details: format!("status={} semantic_root={}", status.as_str_name(), semantic_root),
+            }
+        }
+        Err(e) => DoctorCheck {
+            label: "dry_run_execute",
+            ok: false,
+            details: format!("execute failed: {e}"),
+        },
+    }
+}
+
+fn derive_healthz_url(proxy_base_url: &str) -> String {
+    let mut base = proxy_base_url.trim_end_matches('/').to_string();
+    if base.ends_with("/v1") {
+        base.truncate(base.len() - 3);
+    }
+    format!("{}/healthz", base.trim_end_matches('/'))
+}
+
+fn print_doctor_check(check: DoctorCheck) -> usize {
+    if check.ok {
+        println!("[OK]   {} {}", check.label, check.details);
+        0
+    } else {
+        println!("[FAIL] {} {}", check.label, check.details);
+        1
+    }
+}
+
+fn parse_restart_policy(value: &str) -> Result<RestartPolicy> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "auto" => Ok(RestartPolicy::Auto),
+        "never" => Ok(RestartPolicy::Never),
+        other => bail!("invalid restart policy '{}'; expected auto|never", other),
+    }
+}
+
+fn parse_bool_flag(name: &str, value: &str) -> Result<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "y" | "on" => Ok(true),
+        "0" | "false" | "no" | "n" | "off" => Ok(false),
+        other => bail!("invalid --{} value '{}'; expected true|false", name, other),
+    }
 }
 
 fn split_csv(s: &str) -> Vec<String> {

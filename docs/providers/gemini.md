@@ -2,7 +2,6 @@
 
 ## Prerequisites
 - `cortex` binary installed
-- RMVM gRPC server running on `grpc://127.0.0.1:50051`
 - Valid Gemini API key
 
 ## Environment
@@ -16,9 +15,8 @@ export OPENAI_BASE_URL=http://127.0.0.1:8080/v1
 
 ## Smoke Test
 ```bash
-cortex brain create personal
-cortex auth map-key --api-key ctx_demo_key --tenant local --brain personal
-OPENAI_API_KEY=ctx_demo_key cortex proxy serve --brain personal --endpoint grpc://127.0.0.1:50051
+cortex setup --non-interactive --provider gemini --brain personal --api-key ctx_demo_key
+cortex up
 ```
 
 In another shell:
