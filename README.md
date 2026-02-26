@@ -1,4 +1,5 @@
 # Cortex Brain
+![Cortex Brain banner](docs/assets/cortex-brain-banner.png)
 
 Portable, encrypted memory with a local chat-completions proxy.
 
