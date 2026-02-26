@@ -42,5 +42,7 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           push: true
+          build-args: |
+            CORTEX_CORE_READ_TOKEN=${{ secrets.CORTEX_CORE_READ_TOKEN }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

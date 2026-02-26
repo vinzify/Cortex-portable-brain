@@ -21,6 +21,19 @@ jobs:
         with:
           toolchain: 1.93.1
 
+      - name: Configure Core Repo Auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ secrets.CORTEX_CORE_READ_TOKEN }}" ]]; then
+            git config --global url."https://x-access-token:${{ secrets.CORTEX_CORE_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          fi
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml <<'EOF'
+          [net]
+          git-fetch-with-cli = true
+          EOF
+
       - name: Check Core Lock
         shell: pwsh
         run: pwsh -NoProfile -NonInteractive -File ./scripts/check_core_version_lock.ps1
@@ -60,6 +73,19 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.93.1
+
+      - name: Configure Core Repo Auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ secrets.CORTEX_CORE_READ_TOKEN }}" ]]; then
+            git config --global url."https://x-access-token:${{ secrets.CORTEX_CORE_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          fi
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml <<'EOF'
+          [net]
+          git-fetch-with-cli = true
+          EOF
 
       - name: Build Release Binary
         run: cargo build --locked -p cortex-app --bin cortex --release
