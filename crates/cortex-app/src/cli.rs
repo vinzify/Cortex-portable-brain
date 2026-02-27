@@ -248,6 +248,10 @@ struct ServeCmd {
     planner_api_key: Option<String>,
     #[arg(long, env = "CORTEX_PLANNER_TIMEOUT_SECS", default_value = "30")]
     planner_timeout_secs: u64,
+    #[arg(long, hide = true)]
+    provider_name: Option<String>,
+    #[arg(long, hide = true)]
+    proxy_api_key: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -598,6 +602,8 @@ async fn handle_proxy(cmd: ProxyCommand) -> Result<()> {
                         .or_else(|| std::env::var("OPENAI_API_KEY").ok()),
                     timeout: Duration::from_secs(c.planner_timeout_secs),
                 },
+                provider_name: c.provider_name,
+                proxy_api_key: c.proxy_api_key,
             })
             .await
         }
@@ -835,25 +841,35 @@ async fn handle_doctor(cmd: DoctorCmd) -> Result<()> {
             ok: true,
             details: "planner mode is byo; per-request X-Cortex-Plan header expected".to_string(),
         },
-        PlannerMode::OpenAi => match planner_api_key {
-            Some(api_key) => {
-                let planner_url = format!(
-                    "{}/chat/completions",
-                    cmd.planner_base_url.trim_end_matches('/')
-                );
-                let payload = serde_json::json!({
-                    "model": cmd.planner_model,
-                    "messages": [{"role": "user", "content": "Return only {}"}],
-                    "temperature": 0,
-                    "max_tokens": 1
-                });
-                match http
-                    .post(&planner_url)
-                    .bearer_auth(api_key)
-                    .json(&payload)
-                    .send()
-                    .await
-                {
+        PlannerMode::OpenAi => {
+            let planner_url = format!(
+                "{}/chat/completions",
+                cmd.planner_base_url.trim_end_matches('/')
+            );
+            let payload = serde_json::json!({
+                "model": cmd.planner_model,
+                "messages": [{"role": "user", "content": "Return only {}"}],
+                "temperature": 0,
+                "max_tokens": 1
+            });
+            let requires_key = planner_base_url_requires_api_key(&cmd.planner_base_url);
+            if planner_api_key.is_none() && requires_key {
+                DoctorCheck {
+                    label: "planner_reachable",
+                    ok: false,
+                    details: format!(
+                        "planner API key required for {} (set CORTEX_PLANNER_API_KEY or OPENAI_API_KEY)",
+                        cmd.planner_base_url
+                    ),
+                }
+            } else {
+                let request = http.post(&planner_url).json(&payload);
+                let request = if let Some(api_key) = planner_api_key.clone() {
+                    request.bearer_auth(api_key)
+                } else {
+                    request
+                };
+                match request.send().await {
                     Ok(response) => {
                         let status = response.status();
                         if status.is_server_error() {
@@ -877,13 +893,7 @@ async fn handle_doctor(cmd: DoctorCmd) -> Result<()> {
                     },
                 }
             }
-            None => DoctorCheck {
-                label: "planner_reachable",
-                ok: false,
-                details: "openai planner mode requires CORTEX_PLANNER_API_KEY or OPENAI_API_KEY"
-                    .to_string(),
-            },
-        },
+        }
     };
     failures += print_doctor_check(planner_check);
 
@@ -1025,6 +1035,13 @@ fn derive_healthz_url(proxy_base_url: &str) -> String {
         base.truncate(base.len() - 3);
     }
     format!("{}/healthz", base.trim_end_matches('/'))
+}
+
+fn planner_base_url_requires_api_key(base_url: &str) -> bool {
+    let normalized = base_url.to_ascii_lowercase();
+    !(normalized.contains("127.0.0.1")
+        || normalized.contains("localhost")
+        || normalized.contains("ollama"))
 }
 
 fn print_doctor_check(check: DoctorCheck) -> usize {

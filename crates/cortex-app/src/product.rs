@@ -150,6 +150,7 @@ struct StatusView {
     active_provider: String,
     planner_model: Option<String>,
     proxy_addr: String,
+    dashboard_url: String,
     proxy_healthy: bool,
     rmvm_endpoint: String,
     rmvm_mode: String,
@@ -586,6 +587,10 @@ fn active_brain_label(cfg: &ProductConfig) -> String {
     active.clone()
 }
 
+fn dashboard_url(cfg: &ProductConfig) -> String {
+    format!("http://{}/dashboard", cfg.proxy_addr)
+}
+
 fn print_connect_info_block(cfg: &ProductConfig, provider: Option<&ProviderProfile>) {
     let provider_name = provider_display_name(&cfg.active_provider);
     let model = provider
@@ -666,11 +671,16 @@ fn spawn_proxy(
         .arg(&provider.planner_base_url)
         .arg("--planner-model")
         .arg(&provider.planner_model)
+        .arg("--provider-name")
+        .arg(&cfg.active_provider)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
     if let Some(brain) = cfg.active_brain.as_ref() {
         cmd.arg("--brain").arg(brain);
+    }
+    if let Some(api_key) = cfg.proxy_api_key.as_ref() {
+        cmd.arg("--proxy-api-key").arg(api_key);
     }
     if let Some(api_key) = planner_api_key {
         cmd.env("CORTEX_PLANNER_API_KEY", api_key);
@@ -730,6 +740,16 @@ fn planner_api_key(paths: &Paths, provider: &ProviderProfile) -> Result<Option<S
         return Ok(None);
     };
     get_secret(paths, secret_ref)
+}
+
+fn provider_requires_planner_key(provider: &ProviderProfile) -> bool {
+    if provider.planner_mode != "openai" {
+        return false;
+    }
+    let base_url = provider.planner_base_url.to_ascii_lowercase();
+    !(base_url.contains("127.0.0.1")
+        || base_url.contains("localhost")
+        || base_url.contains("ollama"))
 }
 
 pub fn run_setup(req: SetupRequest) -> Result<SetupResult> {
@@ -801,8 +821,10 @@ pub fn run_setup(req: SetupRequest) -> Result<SetupResult> {
         if let Some(base_url) = req.planner_base_url.as_ref() {
             profile.planner_base_url = base_url.clone();
         }
-        if profile.planner_api_key_ref.is_none() && profile.planner_mode == "openai" {
+        if provider_requires_planner_key(profile) && profile.planner_api_key_ref.is_none() {
             profile.planner_api_key_ref = Some(format!("provider.{}.api_key", provider_name));
+        } else if !provider_requires_planner_key(profile) {
+            profile.planner_api_key_ref = None;
         }
     }
     cfg.active_provider = provider_name.clone();
@@ -828,7 +850,7 @@ pub fn run_setup(req: SetupRequest) -> Result<SetupResult> {
         && cfg
             .providers
             .get(&provider_name)
-            .map(|p| p.planner_mode.as_str() == "openai")
+            .map(provider_requires_planner_key)
             .unwrap_or(false)
     {
         if let Some(value) = prompt_optional("Planner API key (optional)")? {
@@ -844,7 +866,7 @@ pub fn run_setup(req: SetupRequest) -> Result<SetupResult> {
     if cfg
         .providers
         .get(&provider_name)
-        .map(|p| p.planner_mode.as_str() == "openai")
+        .map(provider_requires_planner_key)
         .unwrap_or(false)
         && cfg
             .providers
@@ -1006,7 +1028,9 @@ pub async fn run_up(req: UpRequest) -> Result<()> {
 
     println!("RMVM: {} ({})", runtime.rmvm_mode, runtime.rmvm_endpoint);
     println!("Proxy: running on http://{}", cfg.proxy_addr);
+    println!("Dashboard: {}", dashboard_url(&cfg));
     print_connect_info_block(&cfg, Some(&provider));
+    println!("Tip: paste Base URL and API Key in your AI app settings (not in chat text).");
     Ok(())
 }
 
@@ -1073,6 +1097,7 @@ pub async fn run_status(req: StatusRequest) -> Result<()> {
         active_provider: cfg.active_provider.clone(),
         planner_model,
         proxy_addr: cfg.proxy_addr.clone(),
+        dashboard_url: dashboard_url(&cfg),
         proxy_healthy: probe_proxy(&cfg.proxy_addr).await,
         rmvm_endpoint: endpoint.clone(),
         rmvm_mode: if runtime.rmvm_mode.is_empty() {
@@ -1104,9 +1129,17 @@ pub async fn run_status(req: StatusRequest) -> Result<()> {
             "runtime proxy_pid={:?} rmvm_pid={:?}",
             view.runtime_proxy_pid, view.runtime_rmvm_pid
         );
+        println!("dashboard={}", view.dashboard_url);
+        let overall = if view.proxy_healthy && view.rmvm_healthy {
+            "healthy"
+        } else {
+            "degraded"
+        };
+        println!("health={}", overall);
         if req.verbose {
             println!("config={}", view.config_path);
             println!("state={}", view.state_path);
+            println!("hint=run `cortex open` to view the local dashboard");
         }
     }
     Ok(())
@@ -1287,18 +1320,46 @@ pub fn brain_current(json: bool) -> Result<()> {
 pub async fn open_config(print_only: bool, url_only: bool) -> Result<()> {
     let paths = default_paths()?;
     let cfg = load_config(&paths)?;
-    let url = format!("http://{}/healthz", cfg.proxy_addr);
+    let url = dashboard_url(&cfg);
     if url_only {
         println!("{}", url);
         return Ok(());
     }
-    println!("Proxy health URL: {}", url);
+    println!("Dashboard URL: {}", url);
+    println!("Proxy health URL: http://{}/healthz", cfg.proxy_addr);
     println!("Config file: {}", paths.config_file().display());
     println!("State dir: {}", paths.state_dir.display());
     if !print_only {
-        println!("No dashboard is bundled in v1; use `cortex status --verbose` for full view.");
+        if open_in_browser(&url) {
+            println!("Opened dashboard in your browser.");
+        } else {
+            println!("Could not open browser automatically; copy the dashboard URL above.");
+        }
     }
     Ok(())
+}
+
+fn open_in_browser(url: &str) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        return Command::new("cmd")
+            .arg("/C")
+            .arg("start")
+            .arg("")
+            .arg(url)
+            .spawn()
+            .is_ok();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return Command::new("open").arg(url).spawn().is_ok();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        return Command::new("xdg-open").arg(url).spawn().is_ok();
+    }
+    #[allow(unreachable_code)]
+    false
 }
 
 pub fn load_saved_proxy_api_key() -> Result<Option<String>> {

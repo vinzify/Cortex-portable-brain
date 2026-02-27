@@ -9,7 +9,7 @@ use anyhow::{Context, Result, anyhow};
 use axum::extract::State;
 use axum::http::header::{AUTHORIZATION, HeaderName};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine as _;
@@ -23,6 +23,7 @@ use planner_guard::{
 use reqwest::Client;
 use rmvm_grpc::{AppendEventRequest, GetManifestRequest};
 use rmvm_proto::{ErrorCode, ExecuteRequest, ExecutionStatus, PublicManifest, RmvmPlan, Scope};
+use serde::Serialize;
 use serde_json::{Value as JsonValue, json};
 use tokio::net::TcpListener;
 use tracing::info;
@@ -86,15 +87,55 @@ pub struct ProxyConfig {
     pub default_brain: Option<String>,
     pub brain_home: Option<PathBuf>,
     pub planner: PlannerConfig,
+    pub provider_name: Option<String>,
+    pub proxy_api_key: Option<String>,
 }
 
 #[derive(Clone)]
 struct AppState {
+    proxy_addr: SocketAddr,
     endpoint: String,
     default_brain: Option<String>,
     brain_home: Option<PathBuf>,
     planner: PlannerConfig,
+    provider_name: Option<String>,
+    proxy_api_key: Option<String>,
     planner_http: Client,
+}
+
+#[derive(Debug, Serialize)]
+struct DashboardStatus {
+    proxy: DashboardProxy,
+    planner: DashboardPlanner,
+    rmvm: DashboardHealth,
+    brain: DashboardBrain,
+}
+
+#[derive(Debug, Serialize)]
+struct DashboardProxy {
+    base_url: String,
+    chat_completions_url: String,
+    healthy: bool,
+    api_key: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DashboardPlanner {
+    provider: String,
+    mode: String,
+    model: String,
+    base_url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct DashboardHealth {
+    endpoint: String,
+    healthy: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct DashboardBrain {
+    selected: String,
 }
 
 #[derive(Debug, Clone)]
@@ -193,7 +234,7 @@ async fn serve_on_listener(
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> Result<()> {
     let addr = listener.local_addr()?;
-    let state = build_state(config)?;
+    let state = build_state(config, addr)?;
     info!(
         "cortex proxy listening on http://{} (rmvm endpoint={}, planner_mode={})",
         addr,
@@ -202,6 +243,8 @@ async fn serve_on_listener(
     );
 
     let app = Router::new()
+        .route("/dashboard", get(dashboard_html))
+        .route("/dashboard/status", get(dashboard_status))
         .route("/healthz", get(healthz))
         .route("/v1/chat/completions", post(chat_completions))
         .with_state(Arc::new(state));
@@ -212,22 +255,89 @@ async fn serve_on_listener(
         .context("proxy server failed")
 }
 
-fn build_state(config: ProxyConfig) -> Result<AppState> {
+fn build_state(config: ProxyConfig, proxy_addr: SocketAddr) -> Result<AppState> {
     let planner_http = Client::builder()
         .timeout(config.planner.timeout)
         .build()
         .context("failed to build planner HTTP client")?;
     Ok(AppState {
+        proxy_addr,
         endpoint: config.endpoint,
         default_brain: config.default_brain,
         brain_home: config.brain_home,
         planner: config.planner,
+        provider_name: config.provider_name,
+        proxy_api_key: config.proxy_api_key,
         planner_http,
     })
 }
 
 async fn healthz() -> &'static str {
     "ok"
+}
+
+async fn dashboard_html() -> Html<&'static str> {
+    Html(DASHBOARD_HTML)
+}
+
+async fn dashboard_status(State(state): State<Arc<AppState>>) -> Json<DashboardStatus> {
+    Json(build_dashboard_status(&state).await)
+}
+
+async fn build_dashboard_status(state: &AppState) -> DashboardStatus {
+    let base_url = format!("http://{}", state.proxy_addr);
+    let chat_completions_url = format!("{}/v1/chat/completions", base_url);
+    let provider = state
+        .provider_name
+        .clone()
+        .unwrap_or_else(|| "custom".to_string());
+    let planner = DashboardPlanner {
+        provider,
+        mode: state.planner.mode.as_str().to_string(),
+        model: state.planner.model.clone(),
+        base_url: state.planner.base_url.clone(),
+    };
+    let rmvm = DashboardHealth {
+        endpoint: state.endpoint.clone(),
+        healthy: probe_rmvm_manifest(&state.endpoint).await,
+    };
+    let brain = DashboardBrain {
+        selected: resolve_dashboard_brain_label(state),
+    };
+    DashboardStatus {
+        proxy: DashboardProxy {
+            base_url,
+            chat_completions_url,
+            healthy: true,
+            api_key: state.proxy_api_key.clone(),
+        },
+        planner,
+        rmvm,
+        brain,
+    }
+}
+
+fn resolve_dashboard_brain_label(state: &AppState) -> String {
+    let Some(selected) = state.default_brain.as_ref() else {
+        return "<none>".to_string();
+    };
+    let Ok(store) = BrainStore::new(state.brain_home.clone()) else {
+        return selected.clone();
+    };
+    let Ok(summary) = store.resolve_brain(selected) else {
+        return selected.clone();
+    };
+    summary.name
+}
+
+async fn probe_rmvm_manifest(endpoint: &str) -> bool {
+    let adapter = RmvmAdapter::new(endpoint.to_string());
+    adapter
+        .get_manifest(GetManifestRequest {
+            request_id: format!("dash-{}", Uuid::new_v4().simple()),
+        })
+        .await
+        .is_ok()
 }
 
 async fn chat_completions(
@@ -656,6 +766,67 @@ fn error_code_name(err: &rmvm_proto::ExecutionError) -> String {
         .to_string()
 }
 
+const DASHBOARD_HTML: &str = r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cortex Dashboard</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 0; padding: 24px; background: #0b1220; color: #e6eefc; }
+    h1 { margin: 0 0 8px 0; font-size: 28px; }
+    p.sub { margin: 0 0 18px 0; color: #b7c7e8; }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); }
+    .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 14px; }
+    .k { color: #9db1d9; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .v { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+    .ok { color: #6fe3a1; }
+    .bad { color: #ff7b8f; }
+    code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Cortex Dashboard</h1>
+  <p class="sub">Use this page to confirm Cortex is up and copy your client settings.</p>
+  <div class="grid">
+    <div class="card"><div class="k">Proxy Base URL</div><div class="v" id="proxyBase"></div></div>
+    <div class="card"><div class="k">Chat Completions URL</div><div class="v" id="chatUrl"></div></div>
+    <div class="card"><div class="k">API Key</div><div class="v" id="apiKey"></div></div>
+    <div class="card"><div class="k">Brain</div><div class="v" id="brain"></div></div>
+    <div class="card"><div class="k">Provider</div><div class="v" id="provider"></div></div>
+    <div class="card"><div class="k">Planner Model</div><div class="v" id="model"></div></div>
+    <div class="card"><div class="k">RMVM Endpoint</div><div class="v" id="rmvmEndpoint"></div></div>
+    <div class="card"><div class="k">RMVM Health</div><div class="v" id="rmvmHealth"></div></div>
+  </div>
+  <p class="sub" style="margin-top:16px;">Paste <code>Proxy Base URL + /v1</code> and <code>API Key</code> in your AI app provider settings (not in chat text).</p>
+  <script>
+    const byId = (id) => document.getElementById(id);
+    function setText(id, value) { byId(id).textContent = value ?? "<none>"; }
+    function setHealth(id, healthy) {
+      const node = byId(id);
+      node.textContent = healthy ? "healthy" : "unhealthy";
+      node.className = healthy ? "v ok" : "v bad";
+    }
+    async function refresh() {
+      const res = await fetch("/dashboard/status", { cache: "no-store" });
+      const data = await res.json();
+      setText("proxyBase", data.proxy.base_url + "/v1");
+      setText("chatUrl", data.proxy.chat_completions_url);
+      setText("apiKey", data.proxy.api_key ?? "<set with cortex setup>");
+      setText("brain", data.brain.selected);
+      setText("provider", data.planner.provider + " (" + data.planner.mode + ")");
+      setText("model", data.planner.model);
+      setText("rmvmEndpoint", data.rmvm.endpoint);
+      setHealth("rmvmHealth", data.rmvm.healthy);
+    }
+    refresh().catch(console.error);
+    setInterval(() => refresh().catch(console.error), 2000);
+  </script>
+</body>
+</html>
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -904,6 +1075,8 @@ mod tests {
                     default_brain: None,
                     brain_home: Some(home),
                     planner,
+                    provider_name: Some("test-provider".to_string()),
+                    proxy_api_key: Some("test-key".to_string()),
                 },
                 async {
                     let _ = rx.await;

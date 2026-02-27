@@ -17,6 +17,9 @@ Cortex Brain lets you keep using your normal chat app while memory stays portabl
 - [Why Cortex Is Different](#why-cortex-is-different)
 - [Architecture](#architecture)
 - [Quick Start (3 Steps)](#quick-start-3-steps)
+- [See If Cortex Is Running](#see-if-cortex-is-running)
+- [Where To Paste Base URL and API Key](#where-to-paste-base-url-and-api-key)
+- [Using Ollama (Important)](#using-ollama-important)
 - [Daily Use (No CLI Needed)](#daily-use-no-cli-needed)
 - [Switch Provider in 10 Seconds](#switch-provider-in-10-seconds)
 - [How to Verify It Works](#how-to-verify-it-works)
@@ -161,12 +164,39 @@ Show it anytime:
 cortex status --copy
 ```
 
-### Where do I paste Base URL and API key?
-In your AI app’s model/provider settings:
+## See If Cortex Is Running
+
+Use any of these:
+```bash
+cortex status --verbose
+cortex open --url
+cortex open
+```
+
+`cortex up` also prints a dashboard URL. Open it in your browser to confirm:
+- proxy endpoint
+- provider/model
+- RMVM health
+- copy/paste settings
+
+## Where To Paste Base URL and API Key
+
+Paste values in your AI app provider/model settings:
 - Base URL: `http://127.0.0.1:8080/v1`
 - API key: your Cortex key (`ctx_...`)
+- Model: `cortex-brain`
 
-Then keep using your app normally.
+Do not paste these values inside the chat message itself.
+
+## Using Ollama (Important)
+
+Ollama is the model backend. Cortex is the memory proxy endpoint.
+
+- If you use an OpenAI-compatible chat client, set Base URL/API key there and keep chatting.
+- `ollama serve` must be running for local Ollama models.
+- `ollama run ...` is direct Ollama chat and does not use Cortex Base URL settings.
+
+So for Cortex memory, use a client that supports custom OpenAI-compatible Base URL + API key.
 
 ## Daily Use (No CLI Needed)
 After setup:
@@ -329,6 +359,7 @@ Status:
 ```bash
 cortex status --verbose
 cortex status --copy
+cortex open
 ```
 
 Logs:
@@ -355,11 +386,13 @@ More fixes:
 Getting started:
 - `docs/getting_started.md`
 - `docs/common_problems.md`
+- `docs/dashboard.md`
 
 Provider guides:
 - OpenAI planner: `docs/providers/openai.md`
 - Claude planner: `docs/providers/claude.md`
 - Gemini planner: `docs/providers/gemini.md`
+- Ollama planner: `docs/providers/ollama.md`
 - OpenClaw integration: `docs/providers/openclaw.md`
 
 Operations and security:

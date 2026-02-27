@@ -80,6 +80,19 @@ Use these values in:
 Set:
 - Base URL: `http://127.0.0.1:8080/v1`
 - API key: value shown by `cortex up` or `cortex status --copy`
+- Model: `cortex-brain`
+
+Important:
+- Paste these in app settings, not in chat text.
+- `ollama run ...` does not use Cortex endpoint settings.
+- Keep `ollama serve` running when provider is `ollama`.
+
+## 4.1) See if Cortex is up
+
+```bash
+cortex status --verbose
+cortex open
+```
 
 ## 5) Verify
 
@@ -100,3 +113,9 @@ cortex provider set-model claude-opus-4-6
 ```
 
 Your AI app settings stay the same.
+
+Provider-specific recipes:
+- `docs/providers/openai.md`
+- `docs/providers/claude.md`
+- `docs/providers/gemini.md`
+- `docs/providers/ollama.md`
