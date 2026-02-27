@@ -21,7 +21,5 @@ cortex open --url
 - Current brain
 - Provider + planner mode/model
 - RMVM endpoint + health
-- Built-in quick chat box (sends directly to local `/v1/chat/completions`)
-- Returned `semantic_root` and `trace_root` from response
 
 The dashboard is local-only by default because Cortex binds to `127.0.0.1`.

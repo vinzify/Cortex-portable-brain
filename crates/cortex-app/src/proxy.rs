@@ -243,7 +243,6 @@ async fn serve_on_listener(
     );
 
     let app = Router::new()
-        .route("/", get(dashboard_html))
         .route("/dashboard", get(dashboard_html))
         .route("/dashboard/status", get(dashboard_status))
         .route("/healthz", get(healthz))
@@ -777,58 +776,30 @@ const DASHBOARD_HTML: &str = r#"<!doctype html>
     :root { color-scheme: light dark; }
     body { font-family: Segoe UI, Arial, sans-serif; margin: 0; padding: 24px; background: #0b1220; color: #e6eefc; }
     h1 { margin: 0 0 8px 0; font-size: 28px; }
-    p.sub { margin: 0 0 16px 0; color: #b7c7e8; }
-    .layout { display: grid; gap: 16px; grid-template-columns: 1.1fr 1fr; }
-    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); }
+    p.sub { margin: 0 0 18px 0; color: #b7c7e8; }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); }
     .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 14px; }
-    .k { color: #9db1d9; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .k { color: #9db1d9; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
     .v { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
     .ok { color: #6fe3a1; }
     .bad { color: #ff7b8f; }
     code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; }
-    label { display:block; font-size: 12px; color:#9db1d9; margin-bottom: 4px; }
-    input, textarea, button { width:100%; box-sizing:border-box; border-radius:8px; border:1px solid rgba(255,255,255,0.18); background:rgba(9,20,40,0.7); color:#e6eefc; padding:10px; font-size:14px; }
-    textarea { min-height: 95px; resize: vertical; }
-    button { cursor:pointer; background:#1f6fff; border-color:#1f6fff; font-weight:600; margin-top: 10px; }
-    pre { white-space: pre-wrap; word-break: break-word; background:rgba(0,0,0,0.25); border-radius:8px; padding:10px; min-height:80px; }
-    .hint { font-size: 12px; color:#9db1d9; margin-top:8px; }
-    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <h1>Cortex Dashboard</h1>
-  <p class="sub">Confirm Cortex runtime, copy settings, and test memory in this page.</p>
-
-  <div class="layout">
-    <div>
-      <div class="grid">
-        <div class="card"><div class="k">Proxy Base URL</div><div class="v" id="proxyBase"></div></div>
-        <div class="card"><div class="k">Chat Completions URL</div><div class="v" id="chatUrl"></div></div>
-        <div class="card"><div class="k">API Key</div><div class="v" id="apiKey"></div></div>
-        <div class="card"><div class="k">Brain</div><div class="v" id="brain"></div></div>
-        <div class="card"><div class="k">Provider</div><div class="v" id="provider"></div></div>
-        <div class="card"><div class="k">Planner Model</div><div class="v" id="model"></div></div>
-        <div class="card"><div class="k">RMVM Endpoint</div><div class="v" id="rmvmEndpoint"></div></div>
-        <div class="card"><div class="k">RMVM Health</div><div class="v" id="rmvmHealth"></div></div>
-      </div>
-      <p class="sub" style="margin-top:12px;">Paste <code>Proxy Base URL + /v1</code> and <code>API Key</code> in your AI app settings (not in chat text).</p>
-    </div>
-
-    <div class="card">
-      <div class="k">Quick Chat Test</div>
-      <label for="chatApiKey">API key</label>
-      <input id="chatApiKey" placeholder="ctx_..." />
-      <label for="chatModel" style="margin-top:8px;">Model</label>
-      <input id="chatModel" value="cortex-brain" />
-      <label for="chatPrompt" style="margin-top:8px;">Message</label>
-      <textarea id="chatPrompt" placeholder="Try: Remember I prefer tea."></textarea>
-      <button id="sendBtn">Send to Cortex</button>
-      <div class="hint">This posts to <code>/v1/chat/completions</code> on this local Cortex instance.</div>
-      <label style="margin-top:10px;">Response</label>
-      <pre id="chatOut"></pre>
-    </div>
+  <p class="sub">Use this page to confirm Cortex is up and copy your client settings.</p>
+  <div class="grid">
+    <div class="card"><div class="k">Proxy Base URL</div><div class="v" id="proxyBase"></div></div>
+    <div class="card"><div class="k">Chat Completions URL</div><div class="v" id="chatUrl"></div></div>
+    <div class="card"><div class="k">API Key</div><div class="v" id="apiKey"></div></div>
+    <div class="card"><div class="k">Brain</div><div class="v" id="brain"></div></div>
+    <div class="card"><div class="k">Provider</div><div class="v" id="provider"></div></div>
+    <div class="card"><div class="k">Planner Model</div><div class="v" id="model"></div></div>
+    <div class="card"><div class="k">RMVM Endpoint</div><div class="v" id="rmvmEndpoint"></div></div>
+    <div class="card"><div class="k">RMVM Health</div><div class="v" id="rmvmHealth"></div></div>
   </div>
-
+  <p class="sub" style="margin-top:16px;">Paste <code>Proxy Base URL + /v1</code> and <code>API Key</code> in your AI app provider settings (not in chat text).</p>
   <script>
     const byId = (id) => document.getElementById(id);
     function setText(id, value) { byId(id).textContent = value ?? "<none>"; }
@@ -848,44 +819,7 @@ const DASHBOARD_HTML: &str = r#"<!doctype html>
       setText("model", data.planner.model);
       setText("rmvmEndpoint", data.rmvm.endpoint);
       setHealth("rmvmHealth", data.rmvm.healthy);
-      if (!byId("chatApiKey").value && data.proxy.api_key) {
-        byId("chatApiKey").value = data.proxy.api_key;
-      }
     }
-    async function sendChat() {
-      const apiKey = byId("chatApiKey").value.trim();
-      const model = byId("chatModel").value.trim() || "cortex-brain";
-      const prompt = byId("chatPrompt").value.trim();
-      const out = byId("chatOut");
-      if (!apiKey) { out.textContent = "Enter API key first."; return; }
-      if (!prompt) { out.textContent = "Enter a message first."; return; }
-      out.textContent = "Sending...";
-      try {
-        const resp = await fetch("/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": "Bearer " + apiKey,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: "user", content: prompt }]
-          })
-        });
-        const json = await resp.json();
-        if (!resp.ok) {
-          out.textContent = "HTTP " + resp.status + "\n" + JSON.stringify(json, null, 2);
-          return;
-        }
-        const msg = json?.choices?.[0]?.message?.content ?? "";
-        const sem = json?.cortex?.semantic_root ?? "<none>";
-        const tr = json?.cortex?.trace_root ?? "<none>";
-        out.textContent = msg + "\n\nsemantic_root: " + sem + "\ntrace_root: " + tr;
-      } catch (e) {
-        out.textContent = "Request failed: " + e;
-      }
-    }
-    byId("sendBtn").addEventListener("click", sendChat);
     refresh().catch(console.error);
     setInterval(() => refresh().catch(console.error), 2000);
   </script>
