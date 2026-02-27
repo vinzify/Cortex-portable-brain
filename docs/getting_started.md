@@ -153,7 +153,7 @@ Stop services only:
 cortex uninstall
 ```
 
-Remove all local Cortex data (brains, auth mappings, config, logs):
+Remove all local Cortex data and installed binaries:
 ```bash
 cortex uninstall --all --yes
 ```

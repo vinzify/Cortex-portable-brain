@@ -423,6 +423,8 @@ cortex uninstall
 cortex uninstall --all --yes
 ```
 
+`cortex uninstall --all --yes` removes local data and installed Cortex binaries.
+
 Status:
 ```bash
 cortex status --verbose

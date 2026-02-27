@@ -488,6 +488,96 @@ fn remove_dir_if_exists(path: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(target_os = "windows"))]
+fn remove_dir_if_empty(path: &Path) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let mut entries = fs::read_dir(path)
+        .with_context(|| format!("failed to inspect directory {}", path.display()))?;
+    if entries.next().is_some() {
+        return Ok(false);
+    }
+    fs::remove_dir(path).with_context(|| format!("failed to remove directory {}", path.display()))?;
+    Ok(true)
+}
+
+#[cfg(target_os = "windows")]
+fn schedule_windows_binary_cleanup(exe_path: &Path, sidecar_path: &Path) -> Result<()> {
+    let install_dir = exe_path
+        .parent()
+        .ok_or_else(|| anyhow!("failed to resolve install directory"))?;
+    let quoted_exe = exe_path.display().to_string().replace('"', "\"\"");
+    let quoted_sidecar = sidecar_path.display().to_string().replace('"', "\"\"");
+    let quoted_dir = install_dir.display().to_string().replace('"', "\"\"");
+    let script = format!(
+        "ping 127.0.0.1 -n 3 >NUL & del /f /q \"{}\" >NUL 2>NUL & del /f /q \"{}\" >NUL 2>NUL & rmdir \"{}\" >NUL 2>NUL",
+        quoted_exe, quoted_sidecar, quoted_dir
+    );
+    Command::new("cmd")
+        .args(["/C", &script])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("failed to schedule Windows binary cleanup")?;
+    Ok(())
+}
+
+fn remove_local_binaries() -> Result<(Vec<String>, Vec<String>, Vec<String>)> {
+    #[cfg(target_os = "windows")]
+    let removed = Vec::new();
+    #[cfg(not(target_os = "windows"))]
+    let mut removed = Vec::new();
+    let mut scheduled = Vec::new();
+    let mut warnings = Vec::new();
+
+    let exe_path = match env::current_exe() {
+        Ok(path) => path,
+        Err(err) => {
+            warnings.push(format!("could not resolve current executable path: {err}"));
+            return Ok((removed, scheduled, warnings));
+        }
+    };
+    let install_dir = exe_path.parent().map(Path::to_path_buf);
+    let mut sidecar_path = exe_path.clone();
+    sidecar_path.set_file_name(sidecar_binary_name());
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Err(err) = schedule_windows_binary_cleanup(&exe_path, &sidecar_path) {
+            warnings.push(format!("could not schedule binary cleanup: {err}"));
+        } else {
+            scheduled.push(exe_path.display().to_string());
+            if sidecar_path != exe_path {
+                scheduled.push(sidecar_path.display().to_string());
+            }
+            if let Some(dir) = install_dir {
+                scheduled.push(dir.display().to_string());
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        for path in [&sidecar_path, &exe_path] {
+            if !path.exists() {
+                continue;
+            }
+            match fs::remove_file(path) {
+                Ok(()) => removed.push(path.display().to_string()),
+                Err(err) => warnings.push(format!("{}: {}", path.display(), err)),
+            }
+        }
+        if let Some(dir) = install_dir {
+            if let Ok(true) = remove_dir_if_empty(&dir) {
+                removed.push(dir.display().to_string());
+            }
+        }
+    }
+
+    Ok((removed, scheduled, warnings))
+}
+
 fn resolve_provider<'a>(cfg: &'a ProductConfig, name: Option<&str>) -> Result<&'a ProviderProfile> {
     let provider_name = name.unwrap_or(&cfg.active_provider);
     cfg.providers
@@ -1385,7 +1475,7 @@ pub async fn run_logs(req: LogsRequest) -> Result<()> {
 pub fn run_uninstall(req: UninstallRequest) -> Result<()> {
     if !req.yes {
         let prompt = if req.all {
-            "This will stop Cortex and permanently remove local Cortex data (brains, auth mappings, config, logs). Continue?"
+            "This will stop Cortex, permanently remove local data (brains, auth mappings, config, logs), and uninstall local binaries. Continue?"
         } else {
             "This will stop Cortex services. Continue?"
         };
@@ -1415,29 +1505,49 @@ pub fn run_uninstall(req: UninstallRequest) -> Result<()> {
     let store = BrainStore::new(None)?;
     let brain_home = store.home_dir().to_path_buf();
 
-    let mut removed = Vec::new();
+    let mut removed_data = Vec::new();
     if paths.config_dir.exists() {
         remove_dir_if_exists(&paths.config_dir)?;
-        removed.push(paths.config_dir.display().to_string());
+        removed_data.push(paths.config_dir.display().to_string());
     }
     if paths.state_dir.exists() {
         remove_dir_if_exists(&paths.state_dir)?;
-        removed.push(paths.state_dir.display().to_string());
+        removed_data.push(paths.state_dir.display().to_string());
     }
     if brain_home.exists() {
         remove_dir_if_exists(&brain_home)?;
-        removed.push(brain_home.display().to_string());
+        removed_data.push(brain_home.display().to_string());
     }
 
     println!("Removed local Cortex data.");
-    if removed.is_empty() {
+    if removed_data.is_empty() {
         println!("No local Cortex data directories were found.");
     } else {
-        for p in removed {
+        for p in removed_data {
             println!("  removed {}", p);
         }
     }
-    println!("Binary uninstall: remove the cortex install directory if desired (for example: %USERPROFILE%\\AppData\\Local\\Programs\\cortex on Windows).");
+
+    let (removed_bins, scheduled_bins, binary_warnings) = remove_local_binaries()?;
+    if !removed_bins.is_empty() {
+        println!("Removed local Cortex binaries:");
+        for p in removed_bins {
+            println!("  removed {}", p);
+        }
+    }
+    if !scheduled_bins.is_empty() {
+        println!("Scheduled binary cleanup (completes after this command exits):");
+        for p in scheduled_bins {
+            println!("  scheduled {}", p);
+        }
+    }
+    if !binary_warnings.is_empty() {
+        println!("Binary cleanup warnings:");
+        for warning in binary_warnings {
+            println!("  {}", warning);
+        }
+    }
+
     Ok(())
 }
 
