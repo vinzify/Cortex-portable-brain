@@ -49,7 +49,33 @@ if ($expectedRmvm -ne $actualRmvm) {
 
 Write-Host "Installed cortex to $InstallDir\\cortex.exe"
 Write-Host "Installed rmvm-grpc-server to $InstallDir\\rmvm-grpc-server.exe"
-Write-Host "Add $InstallDir to PATH if needed."
+# Ensure user PATH contains install dir so `cortex` works in new terminals.
+try {
+  $userPathRaw = [Environment]::GetEnvironmentVariable("Path", "User")
+  $userPathEntries = @()
+  if (-not [string]::IsNullOrWhiteSpace($userPathRaw)) {
+    $userPathEntries = $userPathRaw.Split(';') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  }
+  $normalizedInstallDir = $InstallDir.Trim().TrimEnd('\')
+  $presentInUserPath = $false
+  foreach ($entry in $userPathEntries) {
+    if ($entry.Trim().TrimEnd('\').Equals($normalizedInstallDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $presentInUserPath = $true
+      break
+    }
+  }
+  if (-not $presentInUserPath) {
+    $newUserPath = (($userPathEntries + $InstallDir) -join ';')
+    [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+    Write-Host "Added $InstallDir to user PATH."
+  }
+  if (-not ($env:Path.Split(';') | Where-Object { $_.Trim().TrimEnd('\').Equals($normalizedInstallDir, [System.StringComparison]::OrdinalIgnoreCase) })) {
+    $env:Path = "$env:Path;$InstallDir"
+  }
+} catch {
+  Write-Warning "Could not update PATH automatically. Add $InstallDir to PATH manually."
+}
+Write-Host "If cortex is still not found, open a new terminal window."
 if ($Host.Name -ne "ServerRemoteHost") {
   Write-Host "Running guided setup..."
   & "$InstallDir\\cortex.exe" setup
