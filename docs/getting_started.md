@@ -70,6 +70,19 @@ Provider: OpenAI (gpt-4o-mini)
 Brain: personal
 ```
 
+## 3.1) Configure app connectors (optional but recommended)
+
+```bash
+cortex connect
+cortex connect status
+```
+
+Set memory behavior:
+```bash
+cortex mode set auto
+cortex mode status
+```
+
 ## 4) Paste Into Your AI App
 
 Use these values in:

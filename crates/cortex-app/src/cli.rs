@@ -15,10 +15,12 @@ use tonic::transport::Server;
 use uuid::Uuid;
 
 use crate::product::{
-    LogsRequest, RestartPolicy, SetupRequest, StatusRequest, StopRequest, UpRequest, brain_current,
-    ensure_saved_brain_secret_env, load_saved_proxy_api_key, open_config, provider_list,
-    provider_set_model, provider_use, run_logs, run_setup, run_status, run_stop, run_uninstall,
-    run_up,
+    ConnectRequest, ConnectSetRequest, ConnectStatusRequest, LogsRequest, ModeSetRequest,
+    ModeStatusRequest, RestartPolicy, SetupRequest, StatusRequest, StopRequest, UpRequest,
+    brain_current, ensure_saved_brain_secret_env, load_saved_proxy_api_key, open_config,
+    provider_list, provider_set_model, provider_use, run_connect, run_connect_set,
+    run_connect_status, run_logs, run_mode_set, run_mode_status, run_setup, run_status, run_stop,
+    run_uninstall, run_up,
 };
 use crate::proxy::{PlannerConfig, PlannerMode, ProxyConfig, parse_addr, serve};
 
@@ -45,6 +47,16 @@ enum TopCommand {
     },
     Doctor(DoctorCmd),
     Setup(SetupCmd),
+    Connect {
+        #[command(subcommand)]
+        command: Option<ConnectCommand>,
+        #[arg(long)]
+        non_interactive: bool,
+    },
+    Mode {
+        #[command(subcommand)]
+        command: ModeCommand,
+    },
     Up(UpCmd),
     Stop(StopCmd),
     Uninstall(UninstallCmd),
@@ -94,6 +106,19 @@ enum ProviderCommand {
     List(ProviderListCmd),
     Use(ProviderUseCmd),
     SetModel(ProviderSetModelCmd),
+}
+
+#[derive(Debug, Subcommand)]
+enum ConnectCommand {
+    Status(ConnectStatusCmd),
+    Enable(ConnectToggleCmd),
+    Disable(ConnectToggleCmd),
+}
+
+#[derive(Debug, Subcommand)]
+enum ModeCommand {
+    Set(ModeSetCmd),
+    Status(ModeStatusCmd),
 }
 
 #[derive(Debug, Subcommand)]
@@ -393,6 +418,28 @@ struct LogsCmd {
 }
 
 #[derive(Debug, Args)]
+struct ConnectStatusCmd {
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct ConnectToggleCmd {
+    name: String,
+}
+
+#[derive(Debug, Args)]
+struct ModeSetCmd {
+    mode: String,
+}
+
+#[derive(Debug, Args)]
+struct ModeStatusCmd {
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
 struct ProviderListCmd {
     #[arg(long)]
     json: bool,
@@ -450,6 +497,11 @@ pub async fn run() -> Result<()> {
         TopCommand::Auth { command } => handle_auth(command).await,
         TopCommand::Doctor(command) => handle_doctor(command).await,
         TopCommand::Setup(command) => handle_setup(command).await,
+        TopCommand::Connect {
+            command,
+            non_interactive,
+        } => handle_connect(command, non_interactive).await,
+        TopCommand::Mode { command } => handle_mode(command).await,
         TopCommand::Up(command) => handle_up(command).await,
         TopCommand::Stop(command) => handle_stop(command).await,
         TopCommand::Uninstall(command) => handle_uninstall(command).await,
@@ -663,6 +715,28 @@ async fn handle_setup(cmd: SetupCmd) -> Result<()> {
     println!("  rmvm={} ({})", out.rmvm_mode, out.rmvm_endpoint);
     println!("Next: cortex up");
     Ok(())
+}
+
+async fn handle_connect(command: Option<ConnectCommand>, non_interactive: bool) -> Result<()> {
+    match command {
+        None => run_connect(ConnectRequest { non_interactive }),
+        Some(ConnectCommand::Status(c)) => run_connect_status(ConnectStatusRequest { json: c.json }),
+        Some(ConnectCommand::Enable(c)) => run_connect_set(ConnectSetRequest {
+            name: c.name,
+            enabled: true,
+        }),
+        Some(ConnectCommand::Disable(c)) => run_connect_set(ConnectSetRequest {
+            name: c.name,
+            enabled: false,
+        }),
+    }
+}
+
+async fn handle_mode(command: ModeCommand) -> Result<()> {
+    match command {
+        ModeCommand::Set(c) => run_mode_set(ModeSetRequest { mode: c.mode }),
+        ModeCommand::Status(c) => run_mode_status(ModeStatusRequest { json: c.json }),
+    }
 }
 
 async fn handle_up(cmd: UpCmd) -> Result<()> {

@@ -23,3 +23,9 @@ cortex open --url
 - RMVM endpoint + health
 
 The dashboard is local-only by default because Cortex binds to `127.0.0.1`.
+
+Connector and mode status:
+```bash
+cortex connect status
+cortex mode status
+```

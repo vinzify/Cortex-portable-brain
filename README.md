@@ -19,6 +19,7 @@ Cortex Brain lets you keep using your normal chat app while memory stays portabl
 - [Quick Start (3 Steps)](#quick-start-3-steps)
 - [See If Cortex Is Running](#see-if-cortex-is-running)
 - [Where To Paste Base URL and API Key](#where-to-paste-base-url-and-api-key)
+- [Connect Favorite Apps](#connect-favorite-apps)
 - [Using Ollama (Important)](#using-ollama-important)
 - [Daily Use (No CLI Needed)](#daily-use-no-cli-needed)
 - [Switch Provider in 10 Seconds](#switch-provider-in-10-seconds)
@@ -164,6 +165,11 @@ Show it anytime:
 cortex status --copy
 ```
 
+Optional: configure memory mode + app connectors in one wizard:
+```bash
+cortex connect
+```
+
 ## See If Cortex Is Running
 
 Use any of these:
@@ -187,6 +193,35 @@ Paste values in your AI app provider/model settings:
 - Model: `cortex-brain`
 
 Do not paste these values inside the chat message itself.
+
+## Connect Favorite Apps
+
+Use connector commands:
+```bash
+cortex connect
+cortex connect status
+cortex connect enable <name>
+cortex connect disable <name>
+```
+
+Current connector names:
+- `openai_compatible`
+- `chatgpt_web`
+- `claude_web`
+- `gemini_web`
+- `ollama`
+
+Memory mode:
+```bash
+cortex mode set auto
+cortex mode set confirm
+cortex mode set private
+cortex mode status
+```
+
+Note:
+- `openai_compatible` works today through Base URL/API key.
+- web connectors (`chatgpt_web`, `claude_web`, `gemini_web`) are tracked in config and status; browser-extension runtime attach is the next delivery.
 
 ## Using Ollama (Important)
 
@@ -432,6 +467,12 @@ Migration:
 
 ```bash
 cortex setup [--non-interactive] [--provider <name>] [--model <model>] [--brain <name>] [--api-key <key>] [--rmvm-endpoint <grpc-url>]
+cortex connect [--non-interactive]
+cortex connect status [--json]
+cortex connect enable <name>
+cortex connect disable <name>
+cortex mode set <auto|confirm|private>
+cortex mode status [--json]
 cortex up [--provider <name>] [--brain <name>] [--proxy-addr <host:port>] [--rmvm-endpoint <grpc-url>] [--rmvm-port <port>]
 cortex stop [--all|--proxy-only|--rmvm-only] [--force]
 cortex uninstall [--all] [--yes]

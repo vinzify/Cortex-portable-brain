@@ -36,6 +36,10 @@ const DEFAULT_RMVM_HOST: &str = "127.0.0.1";
 const DEFAULT_RMVM_PORT: u16 = 50051;
 const DEFAULT_BRAIN_SECRET_ENV: &str = "CORTEX_BRAIN_SECRET";
 
+fn default_memory_mode() -> String {
+    "auto".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProductConfig {
     pub version: u32,
@@ -48,6 +52,10 @@ pub struct ProductConfig {
     pub brain_secret_ref: String,
     pub rmvm: RmvmSettings,
     pub providers: BTreeMap<String, ProviderProfile>,
+    #[serde(default = "default_memory_mode")]
+    pub memory_mode: String,
+    #[serde(default = "default_connectors")]
+    pub connectors: BTreeMap<String, ConnectorProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +74,14 @@ pub struct ProviderProfile {
     pub planner_base_url: String,
     pub planner_model: String,
     pub planner_api_key_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectorProfile {
+    pub name: String,
+    pub kind: String,
+    pub enabled: bool,
+    pub notes: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -139,6 +155,32 @@ pub struct LogsRequest {
 }
 
 #[derive(Debug, Clone)]
+pub struct ConnectRequest {
+    pub non_interactive: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnectSetRequest {
+    pub name: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnectStatusRequest {
+    pub json: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModeSetRequest {
+    pub mode: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModeStatusRequest {
+    pub json: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct UninstallRequest {
     pub all: bool,
     pub yes: bool,
@@ -155,6 +197,9 @@ struct StatusView {
     active_brain: Option<String>,
     active_provider: String,
     planner_model: Option<String>,
+    memory_mode: String,
+    connectors_enabled: usize,
+    connectors_total: usize,
     proxy_addr: String,
     dashboard_url: String,
     proxy_healthy: bool,
@@ -303,6 +348,56 @@ fn default_providers() -> BTreeMap<String, ProviderProfile> {
     profiles
 }
 
+fn default_connectors() -> BTreeMap<String, ConnectorProfile> {
+    let mut connectors = BTreeMap::new();
+    connectors.insert(
+        "openai_compatible".to_string(),
+        ConnectorProfile {
+            name: "openai_compatible".to_string(),
+            kind: "proxy".to_string(),
+            enabled: true,
+            notes: "Use Base URL + API key in any OpenAI-compatible app.".to_string(),
+        },
+    );
+    connectors.insert(
+        "chatgpt_web".to_string(),
+        ConnectorProfile {
+            name: "chatgpt_web".to_string(),
+            kind: "web".to_string(),
+            enabled: false,
+            notes: "Requires browser extension connector.".to_string(),
+        },
+    );
+    connectors.insert(
+        "claude_web".to_string(),
+        ConnectorProfile {
+            name: "claude_web".to_string(),
+            kind: "web".to_string(),
+            enabled: false,
+            notes: "Requires browser extension connector.".to_string(),
+        },
+    );
+    connectors.insert(
+        "gemini_web".to_string(),
+        ConnectorProfile {
+            name: "gemini_web".to_string(),
+            kind: "web".to_string(),
+            enabled: false,
+            notes: "Requires browser extension connector.".to_string(),
+        },
+    );
+    connectors.insert(
+        "ollama".to_string(),
+        ConnectorProfile {
+            name: "ollama".to_string(),
+            kind: "local".to_string(),
+            enabled: true,
+            notes: "Uses local Ollama backend via Cortex planner config.".to_string(),
+        },
+    );
+    connectors
+}
+
 fn default_config() -> ProductConfig {
     ProductConfig {
         version: CONFIG_VERSION,
@@ -321,6 +416,8 @@ fn default_config() -> ProductConfig {
             sidecar_path: None,
         },
         providers: default_providers(),
+        memory_mode: default_memory_mode(),
+        connectors: default_connectors(),
     }
 }
 
@@ -338,6 +435,16 @@ fn load_config(paths: &Paths) -> Result<ProductConfig> {
         serde_json::from_str(&raw).with_context(|| format!("invalid {}", path.display()))?;
     if cfg.providers.is_empty() {
         cfg.providers = default_providers();
+    }
+    if cfg.connectors.is_empty() {
+        cfg.connectors = default_connectors();
+    } else {
+        for (name, connector) in default_connectors() {
+            cfg.connectors.entry(name).or_insert(connector);
+        }
+    }
+    if cfg.memory_mode.trim().is_empty() {
+        cfg.memory_mode = default_memory_mode();
     }
     Ok(cfg)
 }
@@ -612,6 +719,38 @@ fn active_brain_label(cfg: &ProductConfig) -> String {
 
 fn dashboard_url(cfg: &ProductConfig) -> String {
     format!("http://{}/dashboard", cfg.proxy_addr)
+}
+
+fn normalize_memory_mode(mode: &str) -> Result<String> {
+    let normalized = mode.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "auto" | "confirm" | "private" => Ok(normalized),
+        _ => bail!("invalid mode '{}'; expected auto|confirm|private", mode),
+    }
+}
+
+fn connector_health(cfg: &ProductConfig, connector: &ConnectorProfile) -> String {
+    if !connector.enabled {
+        return "disabled".to_string();
+    }
+    match connector.name.as_str() {
+        "openai_compatible" => {
+            if probe_tcp(&cfg.proxy_addr) {
+                "ready".to_string()
+            } else {
+                "cortex_down".to_string()
+            }
+        }
+        "ollama" => {
+            if probe_tcp("127.0.0.1:11434") {
+                "ready".to_string()
+            } else {
+                "ollama_not_running".to_string()
+            }
+        }
+        "chatgpt_web" | "claude_web" | "gemini_web" => "extension_required".to_string(),
+        _ => "unknown".to_string(),
+    }
 }
 
 fn print_connect_info_block(cfg: &ProductConfig, provider: Option<&ProviderProfile>) {
@@ -1119,6 +1258,9 @@ pub async fn run_status(req: StatusRequest) -> Result<()> {
         active_brain: cfg.active_brain.clone(),
         active_provider: cfg.active_provider.clone(),
         planner_model,
+        memory_mode: cfg.memory_mode.clone(),
+        connectors_enabled: cfg.connectors.values().filter(|c| c.enabled).count(),
+        connectors_total: cfg.connectors.len(),
         proxy_addr: cfg.proxy_addr.clone(),
         dashboard_url: dashboard_url(&cfg),
         proxy_healthy: probe_proxy(&cfg.proxy_addr).await,
@@ -1142,6 +1284,10 @@ pub async fn run_status(req: StatusRequest) -> Result<()> {
             "provider={} model={}",
             view.active_provider,
             view.planner_model.as_deref().unwrap_or("<none>")
+        );
+        println!(
+            "memory_mode={} connectors_enabled={}/{}",
+            view.memory_mode, view.connectors_enabled, view.connectors_total
         );
         println!("proxy={} healthy={}", view.proxy_addr, view.proxy_healthy);
         println!(
@@ -1292,6 +1438,148 @@ pub fn run_uninstall(req: UninstallRequest) -> Result<()> {
         }
     }
     println!("Binary uninstall: remove the cortex install directory if desired (for example: %USERPROFILE%\\AppData\\Local\\Programs\\cortex on Windows).");
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct ConnectorStatusRow {
+    name: String,
+    kind: String,
+    enabled: bool,
+    health: String,
+    notes: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ConnectStatusView {
+    memory_mode: String,
+    connectors: Vec<ConnectorStatusRow>,
+}
+
+fn parse_yes_no(input: &str) -> Result<bool> {
+    match input.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "y" | "on" => Ok(true),
+        "0" | "false" | "no" | "n" | "off" => Ok(false),
+        other => bail!("invalid value '{}'; expected y|n", other),
+    }
+}
+
+pub fn run_connect(req: ConnectRequest) -> Result<()> {
+    let paths = default_paths()?;
+    let mut cfg = load_config(&paths)?;
+    let interactive = is_interactive(req.non_interactive);
+
+    if interactive {
+        println!("Cortex Connect Wizard");
+        println!("Connect once, then chat in your favorite app.");
+        let mode = prompt_with_default("Memory mode (auto/confirm/private)", &cfg.memory_mode)?;
+        cfg.memory_mode = normalize_memory_mode(&mode)?;
+        let names = cfg.connectors.keys().cloned().collect::<Vec<_>>();
+        for name in names {
+            let current = cfg
+                .connectors
+                .get(&name)
+                .map(|c| if c.enabled { "y" } else { "n" })
+                .unwrap_or("n");
+            let answer = prompt_with_default(&format!("Enable connector '{}' (y/n)", name), current)?;
+            let enabled = parse_yes_no(&answer)?;
+            if let Some(connector) = cfg.connectors.get_mut(&name) {
+                connector.enabled = enabled;
+            }
+        }
+    } else {
+        cfg.memory_mode = default_memory_mode();
+        for connector in cfg.connectors.values_mut() {
+            connector.enabled = true;
+        }
+    }
+
+    save_config(&paths, &cfg)?;
+    println!("Connect configuration saved.");
+    println!("memory_mode={}", cfg.memory_mode);
+    for connector in cfg.connectors.values() {
+        let marker = if connector.enabled { "[on]" } else { "[off]" };
+        println!(
+            "{} {} kind={} status={}",
+            marker,
+            connector.name,
+            connector.kind,
+            connector_health(&cfg, connector)
+        );
+    }
+    println!("Tip: run `cortex connect status` anytime.");
+    Ok(())
+}
+
+pub fn run_connect_set(req: ConnectSetRequest) -> Result<()> {
+    let paths = default_paths()?;
+    let mut cfg = load_config(&paths)?;
+    let connector = cfg
+        .connectors
+        .get_mut(&req.name)
+        .ok_or_else(|| anyhow!("unknown connector '{}'", req.name))?;
+    connector.enabled = req.enabled;
+    save_config(&paths, &cfg)?;
+    println!(
+        "Connector {} {}",
+        req.name,
+        if req.enabled { "enabled" } else { "disabled" }
+    );
+    Ok(())
+}
+
+pub fn run_connect_status(req: ConnectStatusRequest) -> Result<()> {
+    let paths = default_paths()?;
+    let cfg = load_config(&paths)?;
+    let view = ConnectStatusView {
+        memory_mode: cfg.memory_mode.clone(),
+        connectors: cfg
+            .connectors
+            .values()
+            .map(|c| ConnectorStatusRow {
+                name: c.name.clone(),
+                kind: c.kind.clone(),
+                enabled: c.enabled,
+                health: connector_health(&cfg, c),
+                notes: c.notes.clone(),
+            })
+            .collect(),
+    };
+    if req.json {
+        println!("{}", serde_json::to_string_pretty(&view)?);
+    } else {
+        println!("memory_mode={}", view.memory_mode);
+        for row in view.connectors {
+            let marker = if row.enabled { "[on]" } else { "[off]" };
+            println!(
+                "{} {} kind={} health={} note={}",
+                marker, row.name, row.kind, row.health, row.notes
+            );
+        }
+    }
+    Ok(())
+}
+
+pub fn run_mode_set(req: ModeSetRequest) -> Result<()> {
+    let paths = default_paths()?;
+    let mut cfg = load_config(&paths)?;
+    cfg.memory_mode = normalize_memory_mode(&req.mode)?;
+    save_config(&paths, &cfg)?;
+    println!("Memory mode set to {}", cfg.memory_mode);
+    Ok(())
+}
+
+pub fn run_mode_status(req: ModeStatusRequest) -> Result<()> {
+    let paths = default_paths()?;
+    let cfg = load_config(&paths)?;
+    if req.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({ "memory_mode": cfg.memory_mode }))?
+        );
+    } else {
+        println!("memory_mode={}", cfg.memory_mode);
+    }
     Ok(())
 }
 
