@@ -25,6 +25,36 @@ cortex logs --service proxy --tail 200
 
 Inspect error code/message in response and headers.
 
+## Extension says: `Error: API key is not mapped`
+
+Your Cortex proxy key must be mapped to a brain.
+
+Run:
+```bash
+cortex brain current
+cortex auth map-key --api-key <ctx_key> --tenant local --brain <brain_id> --subject user:local
+```
+
+Then retry the request.
+
+## Extension says: `openai planner mode requires CORTEX_PLANNER_API_KEY or OPENAI_API_KEY`
+
+You selected provider `openai` but planner API key is missing.
+
+Set it and restart:
+```bash
+# PowerShell
+$env:CORTEX_PLANNER_API_KEY="sk-..."
+cortex stop --all
+cortex up
+```
+
+Persistent on Windows:
+```bash
+setx CORTEX_PLANNER_API_KEY "sk-..."
+```
+Then open a new terminal and run `cortex up`.
+
 ## Port 8080 is already in use
 
 Start on another proxy address:

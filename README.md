@@ -448,6 +448,28 @@ If needed:
 cortex logs --service all --tail 200 --follow
 ```
 
+Common first-run fixes:
+
+If extension/popup shows:
+`Error: openai planner mode requires CORTEX_PLANNER_API_KEY or OPENAI_API_KEY`
+
+Set planner key, then restart:
+```bash
+# PowerShell (current terminal only)
+$env:CORTEX_PLANNER_API_KEY="sk-..."
+cortex stop --all
+cortex up
+```
+
+If extension/popup shows:
+`Error: API key is not mapped`
+
+Map your proxy key to current brain:
+```bash
+cortex brain current
+cortex auth map-key --api-key <ctx_key> --tenant local --brain <brain_id> --subject user:local
+```
+
 More fixes:
 - `docs/common_problems.md`
 
