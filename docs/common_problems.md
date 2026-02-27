@@ -63,3 +63,12 @@ What you can do:
 
 What you cannot do:
 - recover encrypted state without the secret
+
+## Browser extension says Cortex is not reachable
+
+Checklist:
+- ensure `cortex up` is running
+- check health with `cortex status --verbose`
+- confirm extension Base URL is `http://127.0.0.1:8080/v1`
+- confirm extension API key matches `cortex status --copy`
+- if you changed proxy port, update extension Base URL accordingly

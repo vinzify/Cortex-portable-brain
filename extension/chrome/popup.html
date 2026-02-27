@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cortex Connector</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; width: 320px; margin: 0; padding: 12px; background: #0b1220; color: #e5e7eb; }
+    h1 { margin: 0 0 10px; font-size: 16px; }
+    label { display: block; margin-top: 8px; font-size: 12px; color: #93c5fd; }
+    input, textarea, button { width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #334155; background: #111827; color: #e5e7eb; padding: 8px; }
+    textarea { min-height: 75px; resize: vertical; }
+    button { margin-top: 8px; cursor: pointer; font-weight: 600; background: #1f6fff; border-color: #1f6fff; }
+    .secondary { background: #1f2937; border-color: #334155; }
+    #status { margin-top: 8px; font-size: 12px; color: #a7f3d0; }
+    #output { margin-top: 8px; white-space: pre-wrap; font-size: 12px; background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 8px; min-height: 70px; }
+  </style>
+</head>
+<body>
+  <h1>Cortex Connector</h1>
+  <label for="baseUrl">Base URL</label>
+  <input id="baseUrl" />
+  <label for="apiKey">API key</label>
+  <input id="apiKey" />
+  <label for="model">Model</label>
+  <input id="model" />
+  <button id="saveBtn">Save Settings</button>
+  <button id="healthBtn" class="secondary">Test Connection</button>
+
+  <label for="prompt">Quick Ask</label>
+  <textarea id="prompt" placeholder="What do I prefer to drink?"></textarea>
+  <button id="askBtn">Ask Cortex</button>
+
+  <div id="status"></div>
+  <pre id="output"></pre>
+  <script src="popup.js"></script>
+</body>
+</html>

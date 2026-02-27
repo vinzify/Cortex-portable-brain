@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cortex Connector Settings</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; margin: 24px; max-width: 640px; color: #0f172a; }
+    h1 { margin-top: 0; }
+    label { display: block; margin-top: 10px; font-weight: 600; }
+    input, button { width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #cbd5e1; padding: 10px; }
+    .row { margin-top: 10px; }
+    button { background: #1f6fff; color: #fff; border-color: #1f6fff; cursor: pointer; font-weight: 600; }
+    #status { margin-top: 10px; font-size: 13px; color: #166534; }
+  </style>
+</head>
+<body>
+  <h1>Cortex Connector Settings</h1>
+  <p>Configure how the browser extension talks to your local Cortex instance.</p>
+  <label for="baseUrl">Cortex Base URL</label>
+  <input id="baseUrl" />
+
+  <label for="apiKey">Cortex API Key</label>
+  <input id="apiKey" />
+
+  <label for="model">Model</label>
+  <input id="model" />
+
+  <div class="row">
+    <button id="saveBtn">Save</button>
+  </div>
+  <div id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -100,7 +100,19 @@ Important:
 - `ollama run ...` does not use Cortex endpoint settings.
 - Keep `ollama serve` running when provider is `ollama`.
 
-## 4.1) See if Cortex is up
+## 4.1) Browser chat option (no API client setup)
+
+If you use ChatGPT/Claude/Gemini in the browser, use the extension:
+
+1. Open `chrome://extensions` (or `edge://extensions`)
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select `extension/chrome`
+5. In extension popup, set Base URL/API key/model from `cortex status --copy`
+
+Then use the Cortex panel inside the web chat page.
+
+## 4.2) See if Cortex is up
 
 ```bash
 cortex status --verbose
@@ -132,6 +144,7 @@ Provider-specific recipes:
 - `docs/providers/claude.md`
 - `docs/providers/gemini.md`
 - `docs/providers/ollama.md`
+- Browser connector guide: `docs/connectors/browser_extension.md`
 
 ## Uninstall / Remove All
 

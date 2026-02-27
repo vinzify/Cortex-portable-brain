@@ -20,6 +20,7 @@ Cortex Brain lets you keep using your normal chat app while memory stays portabl
 - [See If Cortex Is Running](#see-if-cortex-is-running)
 - [Where To Paste Base URL and API Key](#where-to-paste-base-url-and-api-key)
 - [Connect Favorite Apps](#connect-favorite-apps)
+- [Browser Extension (Web Chat Attach)](#browser-extension-web-chat-attach)
 - [Using Ollama (Important)](#using-ollama-important)
 - [Daily Use (No CLI Needed)](#daily-use-no-cli-needed)
 - [Switch Provider in 10 Seconds](#switch-provider-in-10-seconds)
@@ -221,7 +222,33 @@ cortex mode status
 
 Note:
 - `openai_compatible` works today through Base URL/API key.
-- web connectors (`chatgpt_web`, `claude_web`, `gemini_web`) are tracked in config and status; browser-extension runtime attach is the next delivery.
+- web connectors (`chatgpt_web`, `claude_web`, `gemini_web`) can be attached using the bundled browser extension.
+
+## Browser Extension (Web Chat Attach)
+
+The Chrome-compatible extension lets you keep using web chat UIs while attaching Cortex memory.
+
+Location in this repo:
+- `extension/chrome`
+
+Load it in Chrome/Edge:
+1. Open `chrome://extensions` (or `edge://extensions`).
+2. Enable **Developer mode**.
+3. Click **Load unpacked**.
+4. Select `extension/chrome`.
+
+Then configure extension settings:
+- Base URL: `http://127.0.0.1:8080/v1`
+- API key: value from `cortex status --copy`
+- Model: `cortex-brain`
+
+Use it:
+- Open ChatGPT/Claude/Gemini in your browser.
+- Click the Cortex extension popup to test connection and run quick asks.
+- Use the in-page Cortex panel to capture chat text or query memory.
+
+Detailed guide:
+- `docs/connectors/browser_extension.md`
 
 ## Using Ollama (Important)
 
@@ -428,6 +455,7 @@ Getting started:
 - `docs/getting_started.md`
 - `docs/common_problems.md`
 - `docs/dashboard.md`
+- `docs/connectors/browser_extension.md`
 
 Provider guides:
 - OpenAI planner: `docs/providers/openai.md`
