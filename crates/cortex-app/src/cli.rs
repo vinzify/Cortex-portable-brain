@@ -17,7 +17,8 @@ use uuid::Uuid;
 use crate::product::{
     LogsRequest, RestartPolicy, SetupRequest, StatusRequest, StopRequest, UpRequest, brain_current,
     ensure_saved_brain_secret_env, load_saved_proxy_api_key, open_config, provider_list,
-    provider_set_model, provider_use, run_logs, run_setup, run_status, run_stop, run_up,
+    provider_set_model, provider_use, run_logs, run_setup, run_status, run_stop, run_uninstall,
+    run_up,
 };
 use crate::proxy::{PlannerConfig, PlannerMode, ProxyConfig, parse_addr, serve};
 
@@ -46,6 +47,7 @@ enum TopCommand {
     Setup(SetupCmd),
     Up(UpCmd),
     Stop(StopCmd),
+    Uninstall(UninstallCmd),
     Status(StatusCmd),
     Logs(LogsCmd),
     Provider {
@@ -363,6 +365,14 @@ struct StopCmd {
 }
 
 #[derive(Debug, Args)]
+struct UninstallCmd {
+    #[arg(long)]
+    all: bool,
+    #[arg(long)]
+    yes: bool,
+}
+
+#[derive(Debug, Args)]
 struct StatusCmd {
     #[arg(long)]
     json: bool,
@@ -442,6 +452,7 @@ pub async fn run() -> Result<()> {
         TopCommand::Setup(command) => handle_setup(command).await,
         TopCommand::Up(command) => handle_up(command).await,
         TopCommand::Stop(command) => handle_stop(command).await,
+        TopCommand::Uninstall(command) => handle_uninstall(command).await,
         TopCommand::Status(command) => handle_status(command).await,
         TopCommand::Logs(command) => handle_logs(command).await,
         TopCommand::Provider { command } => handle_provider(command).await,
@@ -673,6 +684,13 @@ async fn handle_stop(cmd: StopCmd) -> Result<()> {
         proxy_only: cmd.proxy_only,
         rmvm_only: cmd.rmvm_only,
         force: cmd.force,
+    })
+}
+
+async fn handle_uninstall(cmd: UninstallCmd) -> Result<()> {
+    run_uninstall(crate::product::UninstallRequest {
+        all: cmd.all,
+        yes: cmd.yes,
     })
 }
 

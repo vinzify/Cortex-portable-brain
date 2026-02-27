@@ -119,3 +119,15 @@ Provider-specific recipes:
 - `docs/providers/claude.md`
 - `docs/providers/gemini.md`
 - `docs/providers/ollama.md`
+
+## Uninstall / Remove All
+
+Stop services only:
+```bash
+cortex uninstall
+```
+
+Remove all local Cortex data (brains, auth mappings, config, logs):
+```bash
+cortex uninstall --all --yes
+```

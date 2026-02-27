@@ -355,6 +355,12 @@ Stop:
 cortex stop --all
 ```
 
+Uninstall:
+```bash
+cortex uninstall
+cortex uninstall --all --yes
+```
+
 Status:
 ```bash
 cortex status --verbose
@@ -428,6 +434,7 @@ Migration:
 cortex setup [--non-interactive] [--provider <name>] [--model <model>] [--brain <name>] [--api-key <key>] [--rmvm-endpoint <grpc-url>]
 cortex up [--provider <name>] [--brain <name>] [--proxy-addr <host:port>] [--rmvm-endpoint <grpc-url>] [--rmvm-port <port>]
 cortex stop [--all|--proxy-only|--rmvm-only] [--force]
+cortex uninstall [--all] [--yes]
 cortex status [--json] [--verbose] [--copy]
 cortex logs [--service proxy|rmvm|all] [--tail <n>] [--follow]
 

@@ -138,6 +138,12 @@ pub struct LogsRequest {
     pub follow: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct UninstallRequest {
+    pub all: bool,
+    pub yes: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestartPolicy {
     Auto,
@@ -367,6 +373,14 @@ fn clear_runtime(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
+fn remove_dir_if_exists(path: &Path) -> Result<()> {
+    if path.exists() {
+        fs::remove_dir_all(path)
+            .with_context(|| format!("failed to remove directory {}", path.display()))?;
+    }
+    Ok(())
+}
+
 fn resolve_provider<'a>(cfg: &'a ProductConfig, name: Option<&str>) -> Result<&'a ProviderProfile> {
     let provider_name = name.unwrap_or(&cfg.active_provider);
     cfg.providers
@@ -521,6 +535,15 @@ fn prompt_optional(label: &str) -> Result<Option<String>> {
     } else {
         Ok(Some(trimmed.to_string()))
     }
+}
+
+fn confirm_action(prompt: &str) -> Result<bool> {
+    print!("{prompt} [y/N]: ");
+    std::io::stdout().flush()?;
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line)?;
+    let answer = line.trim().to_ascii_lowercase();
+    Ok(matches!(answer.as_str(), "y" | "yes"))
 }
 
 fn probe_tcp(addr: &str) -> bool {
@@ -1211,6 +1234,65 @@ pub async fn run_logs(req: LogsRequest) -> Result<()> {
         }
         sleep(Duration::from_millis(750)).await;
     }
+}
+
+pub fn run_uninstall(req: UninstallRequest) -> Result<()> {
+    if !req.yes {
+        let prompt = if req.all {
+            "This will stop Cortex and permanently remove local Cortex data (brains, auth mappings, config, logs). Continue?"
+        } else {
+            "This will stop Cortex services. Continue?"
+        };
+        if !confirm_action(prompt)? {
+            println!("Uninstall canceled.");
+            return Ok(());
+        }
+    }
+
+    let stop_result = run_stop(StopRequest {
+        all: true,
+        proxy_only: false,
+        rmvm_only: false,
+        force: true,
+    });
+    if let Err(e) = stop_result {
+        println!("Warning: could not fully stop services: {e}");
+    }
+
+    if !req.all {
+        println!("Cortex services stopped.");
+        println!("Tip: run `cortex uninstall --all --yes` to remove local Cortex data.");
+        return Ok(());
+    }
+
+    let paths = default_paths()?;
+    let store = BrainStore::new(None)?;
+    let brain_home = store.home_dir().to_path_buf();
+
+    let mut removed = Vec::new();
+    if paths.config_dir.exists() {
+        remove_dir_if_exists(&paths.config_dir)?;
+        removed.push(paths.config_dir.display().to_string());
+    }
+    if paths.state_dir.exists() {
+        remove_dir_if_exists(&paths.state_dir)?;
+        removed.push(paths.state_dir.display().to_string());
+    }
+    if brain_home.exists() {
+        remove_dir_if_exists(&brain_home)?;
+        removed.push(brain_home.display().to_string());
+    }
+
+    println!("Removed local Cortex data.");
+    if removed.is_empty() {
+        println!("No local Cortex data directories were found.");
+    } else {
+        for p in removed {
+            println!("  removed {}", p);
+        }
+    }
+    println!("Binary uninstall: remove the cortex install directory if desired (for example: %USERPROFILE%\\AppData\\Local\\Programs\\cortex on Windows).");
+    Ok(())
 }
 
 async fn maybe_restart_proxy(paths: &Paths, cfg: &ProductConfig) -> Result<()> {
