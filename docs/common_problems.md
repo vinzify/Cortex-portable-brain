@@ -1,104 +1,113 @@
 # Common Problems
 
-## I get `STALL`
+## `cortex` command not found
 
-`STALL` means required memory handles are not ready yet.
+Close terminal and open a new one after install.
 
-Run:
-```bash
-cortex doctor
-cortex logs --service all --tail 200
+If still missing on Windows, run directly:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\cortex\cortex.exe" --help
 ```
 
-Then retry the request.
+## `openai planner mode requires CORTEX_PLANNER_API_KEY or OPENAI_API_KEY`
 
-## I get `REJECTED`
+Cause: provider is `openai` and planner key is missing.
 
-`REJECTED` means RMVM safety/validation gates blocked execution.
-This is expected behavior when plan or data constraints are violated.
+Fix (PowerShell current terminal):
 
-Run:
-```bash
-cortex doctor
-cortex logs --service proxy --tail 200
-```
-
-Inspect error code/message in response and headers.
-
-## Extension says: `Error: API key is not mapped`
-
-Your Cortex proxy key must be mapped to a brain.
-
-Run:
-```bash
-cortex brain current
-cortex auth map-key --api-key <ctx_key> --tenant local --brain <brain_id> --subject user:local
-```
-
-Then retry the request.
-
-## Extension says: `openai planner mode requires CORTEX_PLANNER_API_KEY or OPENAI_API_KEY`
-
-You selected provider `openai` but planner API key is missing.
-
-Set it and restart:
-```bash
-# PowerShell
+```powershell
 $env:CORTEX_PLANNER_API_KEY="sk-..."
 cortex stop --all
 cortex up
 ```
 
 Persistent on Windows:
-```bash
+
+```powershell
 setx CORTEX_PLANNER_API_KEY "sk-..."
 ```
-Then open a new terminal and run `cortex up`.
 
-## Port 8080 is already in use
+Open a new terminal after `setx`.
 
-Start on another proxy address:
+## `API key is not mapped`
+
+Cause: proxy key (`ctx_...`) is not mapped to a brain.
+
+Fix:
+
 ```bash
-cortex up --proxy-addr 127.0.0.1:8081
+cortex brain current
+cortex auth map-key --api-key <ctx_key> --tenant local --brain <brain_id> --subject user:local
 ```
 
-Then use:
+## I get `STALL`
+
+Meaning: required handles are not ready (offline/archival pending).
+
+Run:
+
 ```bash
-OPENAI_BASE_URL=http://127.0.0.1:8081/v1
+cortex doctor
+cortex logs --service all --tail 200
 ```
 
-## `ollama serve` says port 11434 is already in use
+Retry when handles are available.
 
-This usually means Ollama is already running, which is fine.
+## I get `REJECTED`
 
-Check:
+Meaning: RMVM validation/safety gate blocked execution.
+
+Run:
+
 ```bash
-ollama list
+cortex doctor
+cortex logs --service proxy --tail 200
 ```
 
-Then keep using Cortex with:
-```bash
-cortex status --verbose
-```
-
-If provider is `ollama`, ensure the configured planner model exists in `ollama list`.
-
-## I forgot my passphrase
-
-Brains are encrypted. If the encryption secret is lost, existing encrypted brain state cannot be decrypted.
-
-What you can do:
-- create a fresh brain with `cortex setup`
-- import from a previous `.cbrain` export if you have one
-
-What you cannot do:
-- recover encrypted state without the secret
+Check response `error.code` and `X-Cortex-Error-Code`.
 
 ## Browser extension says Cortex is not reachable
 
 Checklist:
-- ensure `cortex up` is running
-- check health with `cortex status --verbose`
-- confirm extension Base URL is `http://127.0.0.1:8080/v1`
-- confirm extension API key matches `cortex status --copy`
-- if you changed proxy port, update extension Base URL accordingly
+
+- `cortex up` is running
+- `cortex status --verbose` shows healthy proxy
+- extension Base URL is `http://127.0.0.1:8080/v1`
+- extension API key exactly matches your `ctx_...` key
+- if using non-default port, update extension Base URL
+
+## Port 8080 is in use
+
+Start proxy on another port:
+
+```bash
+cortex up --proxy-addr 127.0.0.1:8081
+```
+
+Then use Base URL:
+
+```text
+http://127.0.0.1:8081/v1
+```
+
+## `ollama serve` says port 11434 is already in use
+
+Usually Ollama is already running, which is fine.
+
+Check:
+
+```bash
+ollama list
+```
+
+## I forgot my brain passphrase
+
+Brains are encrypted. Without the secret, encrypted state cannot be decrypted.
+
+You can:
+
+- create a new brain
+- import from existing `.cbrain` export
+
+You cannot recover encrypted state without the secret.

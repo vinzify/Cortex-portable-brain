@@ -1,29 +1,23 @@
-# OpenClaw Integration Recipe
+# OpenClaw Integration
 
-If you already ran `cortex setup`, the fastest path is:
+OpenClaw can use Cortex as an OpenAI-compatible provider.
+
+## 1) Start Cortex
 
 ```bash
-cortex provider use openai
 cortex up
 ```
 
-Your OpenClaw Base URL and API key do not change when you later run `cortex provider use claude|gemini|ollama`.
+## 2) Configure OpenClaw Provider
 
-## Prerequisites
-- `cortex` binary installed
-- OpenClaw installed
+Use:
 
-## Environment
-```bash
-export CORTEX_PLANNER_MODE=openai
-export CORTEX_PLANNER_BASE_URL=https://api.openai.com/v1
-export CORTEX_PLANNER_API_KEY=<planner-key>
-export OPENAI_BASE_URL=http://127.0.0.1:8080/v1
-export OPENAI_API_KEY=ctx_demo_key
-```
+- Base URL: `http://127.0.0.1:8080/v1`
+- API key: your `ctx_...` key
+- Model id: `cortex-brain`
 
-## OpenClaw Provider Snippet
-Add this provider in your OpenClaw config:
+Example provider snippet:
+
 ```json
 {
   "models": {
@@ -47,14 +41,29 @@ Add this provider in your OpenClaw config:
 }
 ```
 
-## Smoke Test
+## 3) Pick Planner Provider
+
+Example:
+
 ```bash
-cortex setup --non-interactive --provider openai --brain personal --api-key ctx_demo_key
-cortex up
+cortex provider use ollama
+cortex provider set-model qwen3.5
 ```
 
-Then set OpenClaw to provider `cortex`, model `cortex-brain`, and send one user message.
+or
+
+```bash
+cortex provider use openai
+```
+
+If provider is `openai`/`claude`/`gemini`, configure planner API key.
+
+## 4) Verify
+
+Send one message through OpenClaw with provider `cortex`, model `cortex-brain`.
 
 ## Common Errors
-- `STALL`: proxy returns `503` with stall headers; OpenClaw should retry/backoff.
-- `REJECTED`: proxy returns `400`; inspect response `error.code` and `X-Cortex-Error-Code`.
+
+- `STALL`: proxy returns `503` with stall headers
+- `REJECTED`: proxy returns `400` with deterministic error code
+- `API key is not mapped`: map `ctx_...` key with `cortex auth map-key`

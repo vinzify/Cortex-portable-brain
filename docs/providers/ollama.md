@@ -1,42 +1,59 @@
-# Ollama Planner Recipe
+# Ollama Planner (Local, No Cloud API Key)
 
-Use this when you want local planning with Ollama.
+Use this for the easiest local setup.
 
 ## Prerequisites
-- `ollama` installed
-- model pulled locally
+
+- Ollama installed
+- target model pulled locally
 
 Example:
+
 ```bash
 ollama pull qwen3.5
 ollama list
 ```
 
-## Setup + start Cortex
+## Switch to Ollama
 
 ```bash
-cortex setup --provider ollama --model qwen3.5 --brain personal --api-key ctx_demo_key
+cortex provider use ollama
+cortex provider set-model qwen3.5
+```
+
+Then restart:
+
+```bash
+cortex stop --all
 cortex up
 ```
 
-If `ollama serve` reports port `11434` already in use, Ollama is usually already running.
+No cloud planner API key is required in this mode.
 
-## Connect your AI app
+## Connect Your App
 
-Paste in app settings:
+In app settings:
+
 - Base URL: `http://127.0.0.1:8080/v1`
-- API key: `ctx_demo_key`
+- API key: your `ctx_...` key
 - Model: `cortex-brain`
 
-Do not paste these values inside chat text.
+Do not paste these values into chat text.
 
 ## Verify
 
 ```bash
 curl -sS -i http://127.0.0.1:8080/v1/chat/completions \
-  -H "Authorization: Bearer ctx_demo_key" \
+  -H "Authorization: Bearer <ctx_key>" \
   -H "Content-Type: application/json" \
   -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"remember I prefer tea\"}]}"
 ```
 
 Expected: `HTTP 200` and `chat.completion` response.
+
+## Common Errors
+
+- `Error: API key is not mapped`
+  - run `cortex brain current` and `cortex auth map-key ...`
+- `ollama serve` port `11434` already in use
+  - Ollama is usually already running; verify with `ollama list`

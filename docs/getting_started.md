@@ -1,37 +1,43 @@
 # Getting Started
 
-This is the fastest path to a working setup.
+This guide is the fastest way to a working Cortex setup.
 
-## What Is A Brain?
+## What You Are Setting Up
 
-A brain is your local encrypted memory workspace.
-It stores memory state independent of model provider.
-You can export/import it between machines.
+- Cortex proxy: local endpoint your app calls (`http://127.0.0.1:8080/v1`)
+- Brain store: encrypted local memory state
+- Planner provider: model backend Cortex uses for planning
 
-## What Is The Base URL?
+## Important Credential Split
 
-The Base URL is the endpoint your AI app calls.
-With Cortex, use:
+- Cortex proxy key (`ctx_...`): used by your app/extension to call local Cortex
+- Planner key (provider API key): used by Cortex internally
 
-```bash
-http://127.0.0.1:8080/v1
-```
+Provider requirements:
 
-Your AI app talks to Cortex, and Cortex handles RMVM + planner routing.
+- `openai`: OpenAI API key required
+- `claude`: Anthropic API key required
+- `gemini`: Google AI API key required
+- `ollama`: no cloud API key required
+
+A ChatGPT website subscription is not an OpenAI API key.
 
 ## 1) Install
 
 macOS/Linux:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/vinzify/Cortex-portable-brain/main/install/install.sh | sh
 ```
 
 Windows PowerShell:
+
 ```powershell
 irm https://github.com/vinzify/Cortex-portable-brain/raw/main/install/install.ps1 | iex
 ```
 
-If your network blocks raw script fetch:
+If script fetch is blocked:
+
 ```powershell
 git clone https://github.com/vinzify/Cortex-portable-brain.git
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Cortex-portable-brain\install\install.ps1
@@ -43,16 +49,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Cortex-portable-brain\inst
 cortex setup
 ```
 
-Typical output:
+First-time recommendation:
 
-```bash
-Setup complete:
-  brain=personal-xxxx
-  provider=openai model=gpt-4o-mini
-  proxy=http://127.0.0.1:8080
-  rmvm=managed (grpc://127.0.0.1:50051)
-Next: cortex up
-```
+- choose `ollama` if you want to test without cloud API keys
+- choose `openai`/`claude`/`gemini` only if you already have provider API key
 
 ## 3) Start
 
@@ -60,63 +60,53 @@ Next: cortex up
 cortex up
 ```
 
-Typical output:
+You will see:
 
-```bash
-Copy/paste client settings:
+```text
 Base URL: http://127.0.0.1:8080/v1
 API Key: ctx_...
-Provider: OpenAI (gpt-4o-mini)
+Provider: ...
 Brain: personal
 ```
 
-## 3.1) Configure app connectors (optional but recommended)
+You can reprint this anytime:
 
 ```bash
-cortex connect
-cortex connect status
+cortex status --copy
 ```
 
-Set memory behavior:
-```bash
-cortex mode set auto
-cortex mode status
-```
+## 4) Connect Your Chat Surface
 
-## 4) Paste Into Your AI App
+### Option A: Any OpenAI-compatible app
 
-Use these values in:
-- OpenWebUI
-- OpenClaw
-- Any OpenAI-compatible client
+Put these in app settings:
 
-Set:
 - Base URL: `http://127.0.0.1:8080/v1`
-- API key: value shown by `cortex up` or `cortex status --copy`
+- API key: `ctx_...`
 - Model: `cortex-brain`
 
-Important:
-- Paste these in app settings, not in chat text.
-- `ollama run ...` does not use Cortex endpoint settings.
-- Keep `ollama serve` running when provider is `ollama`.
+Do not paste them inside chat text.
 
-## 4.1) Browser chat option (no API client setup)
+### Option B: Browser chat (ChatGPT/Claude/Gemini)
 
-If you use ChatGPT/Claude/Gemini in the browser, use the extension:
+Use extension from this repo:
 
-1. Open `chrome://extensions` (or `edge://extensions`)
-2. Enable **Developer mode**
-3. Click **Load unpacked**
-4. Select `extension/chrome`
-5. In extension popup, set Base URL/API key/model from `cortex status --copy`
+- path: `extension/chrome`
+- load unpacked in `chrome://extensions` or `edge://extensions`
+- set Base URL/API key/model in popup
+- if you installed binaries only, clone this repo to get `extension/chrome`
 
-Then use the Cortex panel inside the web chat page.
+Guide:
 
-## 4.2) See if Cortex is up
+- `docs/connectors/browser_extension.md`
+
+If you only have ChatGPT subscription (no OpenAI API key), switch to local planner:
 
 ```bash
-cortex status --verbose
-cortex open
+cortex provider use ollama
+cortex provider set-model qwen3.5
+cortex stop --all
+cortex up
 ```
 
 ## 5) Verify
@@ -128,32 +118,67 @@ curl -sS -i http://127.0.0.1:8080/v1/chat/completions \
   -d "{\"model\":\"cortex-brain\",\"messages\":[{\"role\":\"user\",\"content\":\"remember I prefer tea\"}]}"
 ```
 
-Expected result: `HTTP/1.1 200 OK` and a `chat.completion` JSON response.
+Expected: `HTTP/1.1 200 OK` and a `chat.completion` response.
 
-## Switch Provider Later
+## Common First-Run Errors
+
+### `openai planner mode requires CORTEX_PLANNER_API_KEY or OPENAI_API_KEY`
+
+You selected OpenAI planner but did not provide API key.
+
+PowerShell example:
+
+```powershell
+$env:CORTEX_PLANNER_API_KEY="sk-..."
+cortex stop --all
+cortex up
+```
+
+### `API key is not mapped`
+
+Map your proxy key to the current brain:
+
+```bash
+cortex brain current
+cortex auth map-key --api-key <ctx_key> --tenant local --brain <brain_id> --subject user:local
+```
+
+### `STALL` or `REJECTED`
+
+```bash
+cortex doctor
+cortex logs --service all --tail 200 --follow
+```
+
+## Provider Switch (same app settings)
 
 ```bash
 cortex provider use claude
 cortex provider set-model claude-opus-4-6
 ```
 
-Your AI app settings stay the same.
+Your app still uses same Base URL and `ctx_...` key.
 
-Provider-specific recipes:
-- `docs/providers/openai.md`
-- `docs/providers/claude.md`
-- `docs/providers/gemini.md`
-- `docs/providers/ollama.md`
-- Browser connector guide: `docs/connectors/browser_extension.md`
+## Optional UX Commands
 
-## Uninstall / Remove All
+```bash
+cortex connect
+cortex connect status
+cortex mode set auto
+cortex mode status
+cortex open
+```
 
-Stop services only:
+## Uninstall
+
+Stop services:
+
 ```bash
 cortex uninstall
 ```
 
-Remove all local Cortex data and installed binaries:
+Remove all local data and binaries:
+
 ```bash
 cortex uninstall --all --yes
 ```

@@ -1,47 +1,71 @@
 # Browser Extension Connector
 
-Use the extension when you want to keep chatting in browser UIs (ChatGPT, Claude, Gemini) and still attach Cortex memory.
+Use this when you want to keep chatting in ChatGPT/Claude/Gemini web UI and still use Cortex memory.
+
+## What It Does
+
+- adds a Cortex popup
+- adds in-page Cortex panel on supported chat sites
+- sends memory requests to local Cortex (`/v1/chat/completions`)
 
 ## Prerequisites
 
-- `cortex up` is running locally
-- Proxy settings available from `cortex status --copy`
+- `cortex up` is running
+- you have a proxy API key (`ctx_...`) from `cortex status --copy`
+- planner provider is configured (`cortex setup`)
 
-## Load the extension
+Planner note:
 
-The extension source is in:
-- `extension/chrome`
+- if provider is `openai`, you still need OpenAI API key for planner
+- ChatGPT web subscription alone does not satisfy planner API-key requirement
+- if you want no cloud key, use provider `ollama`
 
-In Chrome/Edge:
-1. Open `chrome://extensions` (or `edge://extensions`).
-2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select `extension/chrome`.
+No-cloud setup example:
 
-## Configure it
+```bash
+cortex provider use ollama
+cortex provider set-model qwen3.5
+cortex stop --all
+cortex up
+```
 
-Open the extension popup and set:
+## Load Extension (Chrome/Edge)
+
+1. Open `chrome://extensions` or `edge://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select folder: `extension/chrome`
+
+If you installed binaries only, clone this repo first to access `extension/chrome`.
+
+## Configure Extension
+
+Open extension popup and set:
+
 - Base URL: `http://127.0.0.1:8080/v1`
-- API key: your Cortex key
+- API key: your `ctx_...` key
 - Model: `cortex-brain`
 
-Click **Save Settings** and **Test Connection**.
+Then click:
 
-## Use it
+- **Save Settings**
+- **Test Connection**
 
-- In supported web chats, click the floating **Cortex** button.
-- Use **Remember This Chat** to capture visible chat text into Cortex.
-- Use **Ask Memory** for a quick memory query.
-- You can also highlight text and use context menu: **Remember Selection with Cortex**.
+## Use It
 
-## What this connector does in v1
+- `Ask Cortex`: query memory quickly
+- `Remember This Chat`: capture visible page content to memory
+- `Remember Selection with Cortex`: highlight text and use context menu
 
-- Attaches via local extension UI.
-- Calls Cortex proxy through OpenAI-compatible chat completions.
-- Returns normal model output plus Cortex verification roots where available.
+## If It Fails
 
-## Scope and limits
+- `Error: API key is not mapped`
+  - run `cortex brain current`
+  - run `cortex auth map-key --api-key <ctx_key> --tenant local --brain <brain_id> --subject user:local`
 
-- This is a connector MVP for browser chat surfaces.
-- DOM extraction depends on host page structure and can vary by provider updates.
-- For production-style integration, OpenAI-compatible API clients remain the most stable path.
+- `Error: openai planner mode requires CORTEX_PLANNER_API_KEY or OPENAI_API_KEY`
+  - set planner API key and restart Cortex
+
+See also:
+
+- `docs/common_problems.md`

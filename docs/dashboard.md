@@ -1,31 +1,30 @@
 # Dashboard
 
-Use the local dashboard to confirm Cortex runtime health and copy client settings.
+Use the local dashboard to confirm Cortex is running and copy the exact app settings.
 
-## Open dashboard
+## Open Dashboard
 
 ```bash
 cortex open
 ```
 
-Or print URL only:
+URL only:
 
 ```bash
 cortex open --url
 ```
 
-## What it shows
-- Proxy base URL (`.../v1`)
-- Chat completions URL
-- API key saved in local config
+## What You Should Check
+
+- Proxy endpoint (`http://127.0.0.1:8080/v1` by default)
+- Current `ctx_...` proxy key
 - Current brain
-- Provider + planner mode/model
-- RMVM endpoint + health
+- Planner provider and model
+- RMVM endpoint and health
 
-The dashboard is local-only by default because Cortex binds to `127.0.0.1`.
+If health is bad, run:
 
-Connector and mode status:
 ```bash
-cortex connect status
-cortex mode status
+cortex doctor
+cortex logs --service all --tail 200 --follow
 ```

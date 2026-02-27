@@ -1,43 +1,52 @@
-# OpenAI Planner Recipe
+# OpenAI Planner
 
-If you already ran `cortex setup`, switch to OpenAI with one command:
+Use this when Cortex planner should run on OpenAI API.
+
+## Required Credential
+
+- OpenAI API key is required.
+- ChatGPT website subscription is not an API key.
+
+Set planner key:
+
+```powershell
+$env:CORTEX_PLANNER_API_KEY="sk-..."
+```
+
+Or:
+
+```powershell
+$env:OPENAI_API_KEY="sk-..."
+```
+
+## Switch to OpenAI
 
 ```bash
 cortex provider use openai
-```
-
-Optional model change:
-
-```bash
 cortex provider set-model gpt-4o-mini
 ```
 
-Your client Base URL and API key do not change.
-
-## First-Time Setup (if needed)
+Then restart:
 
 ```bash
-cortex setup --non-interactive --provider openai --brain personal --api-key ctx_demo_key
+cortex stop --all
 cortex up
 ```
 
-## Optional Environment Overrides
-```bash
-export CORTEX_PLANNER_MODE=openai
-export CORTEX_PLANNER_BASE_URL=https://api.openai.com/v1
-export CORTEX_PLANNER_API_KEY=<your-openai-key>
-export CORTEX_PLANNER_MODEL=gpt-4o-mini
-export OPENAI_BASE_URL=http://127.0.0.1:8080/v1
-```
+Your chat app settings do not change.
 
-## Smoke Test
+## Verify
+
 ```bash
 curl -sS http://127.0.0.1:8080/v1/chat/completions \
-  -H "Authorization: Bearer ctx_demo_key" \
+  -H "Authorization: Bearer <ctx_key>" \
   -H "Content-Type: application/json" \
   -d '{"model":"cortex-brain","messages":[{"role":"user","content":"remember I prefer tea"}]}'
 ```
 
 ## Common Errors
-- `STALL`: upstream handles are not ready (`X-Cortex-Stall-*` headers explain what is pending). Retry when availability changes.
-- `REJECTED`: plan or policy validation failed. Inspect `error.code` and `X-Cortex-Error-Code`.
+
+- `openai planner mode requires CORTEX_PLANNER_API_KEY or OPENAI_API_KEY`
+  - planner key missing
+- `API key is not mapped`
+  - map `ctx_...` key with `cortex auth map-key`
